@@ -1,2 +1,0 @@
-D:/github clone/PawGuardAI/android/app/.cxx/debug/yo2h506k/armeabi-v7a/CMakeFiles/edit_cache.dir
-D:/github clone/PawGuardAI/android/app/.cxx/debug/yo2h506k/armeabi-v7a/CMakeFiles/rebuild_cache.dir

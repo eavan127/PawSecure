@@ -1,2 +1,0 @@
-C:/Users/ASUS/Downloads/club-website-2018-master/pawguard-ai/pawguard_ai/PawGuardAI/android/app/.cxx/debug/m1t2l513/armeabi-v7a/CMakeFiles/edit_cache.dir
-C:/Users/ASUS/Downloads/club-website-2018-master/pawguard-ai/pawguard_ai/PawGuardAI/android/app/.cxx/debug/m1t2l513/armeabi-v7a/CMakeFiles/rebuild_cache.dir
