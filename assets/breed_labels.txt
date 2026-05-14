@@ -1,0 +1,69 @@
+Labrador Retriever|dog|Friendly, Active, Outgoing|Friendly, Reliable, Intelligent|Large|Canada
+German Shepherd|dog|Loyal, Courageous, Confident|Confident, Courageous, Smart|Large|Germany
+Golden Retriever|dog|Intelligent, Friendly, Devoted|Friendly, Intelligent, Devoted|Large|Scotland
+French Bulldog|dog|Adaptable, Playful, Smart|Playful, Adaptable, Alert|Small|France
+Bulldog|dog|Calm, Courageous, Friendly|Docile, Willful, Friendly|Medium|England
+Poodle|dog|Intelligent, Active, Proud|Intelligent, Active, Trainable|Various|Germany/France
+Beagle|dog|Curious, Friendly, Merry|Amiable, Determined, Excitable|Small-Medium|England
+Rottweiler|dog|Loyal, Loving, Confident|Loyal, Loving, Guardian|Large|Germany
+Yorkshire Terrier|dog|Bold, Intelligent, Confident|Feisty, Brave, Determined|Small|England
+Boxer|dog|Fun-loving, Bright, Active|Playful, Energetic, Loyal|Large|Germany
+Dachshund|dog|Curious, Friendly, Spunky|Clever, Stubborn, Devoted|Small|Germany
+Siberian Husky|dog|Outgoing, Mischievous, Loyal|Gentle, Alert, Outgoing|Medium-Large|Siberia
+Shih Tzu|dog|Affectionate, Playful, Outgoing|Affectionate, Happy, Outgoing|Small|Tibet/China
+Chihuahua|dog|Charming, Graceful, Sassy|Devoted, Alert, Quick|Toy|Mexico
+Pomeranian|dog|Inquisitive, Bold, Lively|Playful, Friendly, Active|Toy|Germany/Poland
+Australian Shepherd|dog|Smart, Work-oriented, Exuberant|Intelligent, Active, Good-natured|Medium|USA
+Doberman Pinscher|dog|Loyal, Fearless, Alert|Loyal, Fearless, Obedient|Large|Germany
+Great Dane|dog|Friendly, Patient, Dependable|Gentle, Friendly, Devoted|Giant|Germany
+Pembroke Welsh Corgi|dog|Affectionate, Smart, Alert|Bold, Friendly, Tenacious|Small-Medium|Wales
+Cocker Spaniel|dog|Gentle, Smart, Happy|Gentle, Smart, Happy|Medium|Spain/England
+Border Collie|dog|Affectionate, Smart, Energetic|Intelligent, Energetic, Responsive|Medium|Scotland/England
+Maltese|dog|Gentle, Playful, Charming|Gentle, Playful, Fearless|Toy|Malta
+Pug|dog|Charming, Mischievous, Loving|Playful, Charming, Mischievous|Small|China
+Boston Terrier|dog|Friendly, Bright, Amusing|Friendly, Intelligent, Lively|Small|USA
+Havanese|dog|Outgoing, Funny, Intelligent|Playful, Intelligent, Responsive|Small|Cuba
+Shetland Sheepdog|dog|Playful, Energetic, Bright|Intelligent, Playful, Obedient|Small-Medium|Scotland
+Cavalier King Charles Spaniel|dog|Affectionate, Graceful, Gentle|Affectionate, Gentle, Patient|Small|England
+Bernese Mountain Dog|dog|Good-natured, Calm, Strong|Affectionate, Loyal, Faithful|Large|Switzerland
+English Springer Spaniel|dog|Friendly, Playful, Obedient|Friendly, Obedient, Active|Medium|England
+Brittany|dog|Bright, Fun-loving, Upbeat|Bright, Alert, Adaptable|Medium|France
+Weimaraner|dog|Friendly, Fearless, Alert|Friendly, Obedient, Fearless|Large|Germany
+Miniature Schnauzer|dog|Friendly, Smart, Obedient|Friendly, Spirited, Alert|Small|Germany
+Vizsla|dog|Affectionate, Gentle, Energetic|Gentle, Affectionate, Energetic|Medium-Large|Hungary
+Mastiff|dog|Good-natured, Courageous, Dignified|Good-natured, Calm, Affectionate|Giant|England
+Newfoundland|dog|Sweet, Patient, Devoted|Gentle, Sweet, Devoted|Giant|Canada
+Rhodesian Ridgeback|dog|Affectionate, Dignified, Even-tempered|Strong, Dignified, Mischievous|Large|Zimbabwe
+Shiba Inu|dog|Alert, Active, Attentive|Alert, Confident, Spirited|Small-Medium|Japan
+Akita|dog|Courageous, Dignified, Profoundly loyal|Dignified, Courageous, Loyal|Large|Japan
+Cane Corso|dog|Intelligent, Assertive, Confident|Intelligent, Loyal, Protective|Large|Italy
+Alaskan Malamute|dog|Affectionate, Loyal, Playful|Affectionate, Loyal, Dignified|Large|Alaska
+English Cocker Spaniel|dog|Energetic, Merry, Responsive|Merry, Affectionate, Trainable|Medium|England
+Siamese|cat|Vocal, Social, Intelligent|Affectionate, Intelligent, Social|Medium|Thailand
+Persian|cat|Quiet, Sweet, Calm|Gentle, Calm, Sweet|Medium|Iran
+Maine Coon|cat|Gentle, Playful, Friendly|Friendly, Intelligent, Gentle|Large|USA
+Bengal|cat|Active, Playful, Intelligent|Energetic, Alert, Intelligent|Medium|USA
+British Shorthair|cat|Calm, Easygoing, Affectionate|Calm, Affectionate, Easygoing|Medium|UK
+Ragdoll|cat|Gentle, Calm, Affectionate|Gentle, Docile, Calm|Large|USA
+Abyssinian|cat|Active, Playful, Curious|Intelligent, Active, Alert|Medium|Ethiopia
+Sphynx|cat|Energetic, Loyal, Playful|Energetic, Loyal, Curious|Medium|Canada
+Scottish Fold|cat|Sweet, Placid, Affectionate|Sweet, Calm, Affectionate|Medium|Scotland
+Devon Rex|cat|Playful, People-oriented, Active|Playful, Intelligent, Active|Small-Medium|England
+American Shorthair|cat|Easygoing, Gentle, Calm|Easygoing, Affectionate, Calm|Medium|USA
+Birman|cat|Gentle, Affectionate, Patient|Gentle, Social, Affectionate|Medium-Large|Myanmar
+Norwegian Forest Cat|cat|Friendly, Intelligent, Playful|Friendly, Intelligent, Gentle|Large|Norway
+Oriental|cat|Social, Intelligent, Active|Social, Intelligent, Playful|Medium|Thailand/UK
+Russian Blue|cat|Gentle, Quiet, Intelligent|Gentle, Calm, Intelligent|Medium|Russia
+Exotic Shorthair|cat|Gentle, Affectionate, Quiet|Gentle, Calm, Affectionate|Medium|USA
+Turkish Angora|cat|Intelligent, Social, Playful|Intelligent, Active, Playful|Medium|Turkey
+Cornish Rex|cat|Active, Playful, People-oriented|Active, Intelligent, Playful|Small-Medium|England
+Burmese|cat|Social, Intelligent, Playful|Affectionate, Social, Playful|Medium|Myanmar/Thailand
+Manx|cat|Easygoing, Intelligent, Playful|Easygoing, Affectionate, Intelligent|Medium|Isle of Man
+Siberian|cat|Affectionate, Playful, Intelligent|Affectionate, Intelligent, Loyal|Medium-Large|Russia
+Balinese|cat|Intelligent, Affectionate, Playful|Intelligent, Social, Playful|Medium|USA
+Tonkinese|cat|Intelligent, Social, Active|Intelligent, Playful, Affectionate|Medium|Canada
+Chartreux|cat|Quiet, Intelligent, Gentle|Gentle, Intelligent, Adaptable|Medium|France
+Somali|cat|Active, Intelligent, Playful|Active, Intelligent, Playful|Medium|Somalia/UK
+Japanese Bobtail|cat|Intelligent, Playful, Active|Intelligent, Playful, Social|Medium|Japan
+Mixed Breed Dog|dog|Varies|Varies|Varies|Various
+Mixed Breed Cat|cat|Varies|Varies|Varies|Various

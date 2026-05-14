@@ -1,0 +1,7 @@
+sitting
+standing
+walking
+running
+playing
+eating
+sleeping

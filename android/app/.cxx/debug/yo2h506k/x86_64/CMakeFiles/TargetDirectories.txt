@@ -1,0 +1,2 @@
+D:/github clone/PawGuardAI/android/app/.cxx/debug/yo2h506k/x86_64/CMakeFiles/edit_cache.dir
+D:/github clone/PawGuardAI/android/app/.cxx/debug/yo2h506k/x86_64/CMakeFiles/rebuild_cache.dir

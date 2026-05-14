@@ -1,0 +1,65 @@
+name: pawguard_ai
+description: "A new Flutter project."
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Navigation and Routing
+  go_router: ^14.0.0
+  
+  # State Management
+  provider: ^6.1.0
+  
+  # Google Services
+  google_maps_flutter: ^2.6.0
+  
+  # Machine Learning & Camera
+  tflite_flutter: ^0.12.1
+  camera: ^0.11.0
+  google_mlkit_face_detection: ^0.11.0
+  google_mlkit_commons: ^0.8.0
+  
+  # Firebase
+  firebase_core: ^2.24.2
+  cloud_firestore: ^4.15.5
+  
+  # Image Processing
+  image: ^4.1.7
+  image_picker: ^1.0.7
+  
+  # Utilities
+  flutter_dotenv: ^5.1.0
+  permission_handler: ^11.0.1
+  path_provider: ^2.1.2
+  google_fonts: ^6.0.0
+  qr_code_scanner: ^1.0.1
+  timeago: ^3.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/ssd_mobilenet_v2.tflite
+    - assets/labels.txt
+    - assets/breed_labels.txt
+    - assets/activity_labels.txt
+    - assets/models/
+    - assets/models/README.md
+    - assets/models/model_download_guide.md
+    - assets/models/breed_classifier.tflite
+    - assets/models/activity_detector.tflite
+    - assets/models/health_detector.tflite
+    - assets/models/pet_feature_extractor.tflite
+    - .env
+
+
