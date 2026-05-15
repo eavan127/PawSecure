@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+/**
+ * PhotoUploadBox — web-compatible image picker.
+ * Uses a hidden <input type="file"> instead of expo-image-picker.
+ */
+
+import React, { useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../theme';
+import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
 
 interface PhotoUploadBoxProps {
     onImageSelected: (uri: string) => void;
@@ -15,163 +20,89 @@ export const PhotoUploadBox: React.FC<PhotoUploadBoxProps> = ({
     imageUri,
     required = false,
 }) => {
-    const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
-    const requestPermission = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        setHasPermission(status === 'granted');
-        return status === 'granted';
+    const handleClick = () => inputRef.current?.click();
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const uri = URL.createObjectURL(file);
+        onImageSelected(uri);
     };
-
-    const pickImage = async () => {
-        const permitted = hasPermission ?? await requestPermission();
-
-        if (!permitted) {
-            Alert.alert(
-                'Permission Required',
-                'Please grant camera roll permissions to upload images.'
-            );
-            return;
-        }
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets[0]) {
-            onImageSelected(result.assets[0].uri);
-        }
-    };
-
-    const takePhoto = async () => {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-
-        if (status !== 'granted') {
-            Alert.alert(
-                'Permission Required',
-                'Please grant camera permissions to take photos.'
-            );
-            return;
-        }
-
-        const result = await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets[0]) {
-            onImageSelected(result.assets[0].uri);
-        }
-    };
-
-    const showOptions = () => {
-        Alert.alert(
-            'Add Photo',
-            'Choose an option',
-            [
-                { text: 'Take Photo', onPress: takePhoto },
-                { text: 'Choose from Library', onPress: pickImage },
-                { text: 'Cancel', style: 'cancel' },
-            ]
-        );
-    };
-
-    if (imageUri) {
-        return (
-            <Pressable style={styles.containerWithImage} onPress={showOptions}>
-                <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
-                <View style={styles.editOverlay}>
-                    <Ionicons name="camera" size={24} color={theme.colors.textPrimary} />
-                    <Text style={styles.editText}>Tap to change</Text>
-                </View>
-            </Pressable>
-        );
-    }
 
     return (
         <Pressable
-            style={({ pressed }) => [
-                styles.container,
-                { opacity: pressed ? 0.8 : 1 },
-            ]}
-            onPress={showOptions}
+            style={({ pressed }) => [styles.container, imageUri && styles.hasImage, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={handleClick}
         >
-            <View style={styles.iconContainer}>
-                <Ionicons name="camera" size={32} color={theme.colors.greenPrimary} />
-            </View>
-            <Text style={styles.title}>
-                Add Photo {required && <Text style={styles.required}>(Required)</Text>}
-            </Text>
-            <Text style={styles.subtitle}>Tap to upload or take a clear photo</Text>
+            {/* Hidden native file input */}
+            <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+            />
+
+            {imageUri ? (
+                <>
+                    <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+                    <View style={styles.editOverlay}>
+                        <Ionicons name="camera" size={20} color="#fff" />
+                        <Text style={styles.editText}>Tap to change</Text>
+                    </View>
+                </>
+            ) : (
+                <>
+                    <View style={styles.iconWrap}>
+                        <Ionicons name="camera-outline" size={32} color={colors.minimalist.textMedium} />
+                    </View>
+                    <Text style={styles.label}>
+                        Upload Photo{required ? <Text style={styles.req}> *</Text> : null}
+                    </Text>
+                    <Text style={styles.hint}>Click to select or take a photo</Text>
+                </>
+            )}
         </Pressable>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: theme.borderRadius.card,
         borderWidth: 2,
-        borderColor: theme.colors.borderGlass,
+        borderColor: colors.minimalist.borderLight,
         borderStyle: 'dashed',
-        paddingVertical: theme.spacing.xxxl,
-        paddingHorizontal: theme.spacing.xl,
+        borderRadius: 12,
+        paddingVertical: spacing.xxl,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: colors.minimalist.warmGray,
+        cursor: 'pointer' as any,
     },
-    containerWithImage: {
-        borderRadius: theme.borderRadius.card,
-        overflow: 'hidden',
+    hasImage: {
+        padding: 0,
         height: 200,
-        position: 'relative',
+        overflow: 'hidden',
+        borderStyle: 'solid',
     },
-    image: {
-        width: '100%',
-        height: '100%',
-    },
+    image: { width: '100%', height: '100%' },
     editOverlay: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        backgroundColor: 'rgba(0,0,0,0.55)',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: theme.spacing.sm,
-        gap: theme.spacing.sm,
+        paddingVertical: spacing.sm,
+        gap: 6,
     },
-    editText: {
-        ...theme.textStyles.body,
-        color: theme.colors.textPrimary,
-        fontWeight: '500',
-    },
-    iconContainer: {
-        width: 64,
-        height: 64,
-        borderRadius: theme.radius.lg,
-        backgroundColor: 'rgba(45, 122, 94, 0.15)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: theme.spacing.md,
-    },
-    title: {
-        ...theme.textStyles.h4,
-        color: theme.colors.textPrimary,
-        fontWeight: '600',
-        marginBottom: theme.spacing.xs,
-    },
-    required: {
-        color: theme.colors.textMuted,
-        fontWeight: '400',
-    },
-    subtitle: {
-        ...theme.textStyles.body,
-        color: theme.colors.textMuted,
-        fontSize: 13,
-    },
+    editText:  { color: '#fff', fontSize: 13, fontWeight: '600' },
+    iconWrap:  { marginBottom: spacing.sm },
+    label:     { fontSize: 15, fontWeight: '600', color: colors.minimalist.textDark, marginBottom: 4 },
+    req:       { color: '#ef4444' },
+    hint:      { fontSize: 13, color: colors.minimalist.textMedium },
 });

@@ -1,383 +1,179 @@
-// Animal Service - Database operations for animal identities
-import {
-    collection,
-    doc,
-    addDoc,
-    getDoc,
-    getDocs,
-    updateDoc,
-    query,
-    where,
-    orderBy,
-    limit,
-    Timestamp,
-    GeoPoint
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
-import { AnimalIdentity, ReportEntry, CareEntry } from '../types';
-import { AnimalIdentificationResult } from '../types/yolo';
-import * as FileSystem from 'expo-file-system/legacy';
-
-
-
-
-const ANIMALS_COLLECTION = 'animalIdentities';
-const REPORTS_COLLECTION = 'reports';
-
 /**
- * Generate a unique system ID for a new animal
+ * PawSecure — Animal Service
+ *
+ * All database operations for animals.
+ * Screens never call Supabase directly — they call this file.
  */
-function generateAnimalId(): string {
-    const year = new Date().getFullYear();
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `PG-${year}-${random}`;
+
+import { supabase } from '../lib/supabase';
+import type {
+    PendingAnimal,
+    PendingAnimalInsert,
+    RescuedAnimal,
+    RescuedAnimalInsert,
+    AnimalEmbeddingInsert,
+} from '../lib/supabaseTypes';
+
+// ── Pending Animals ───────────────────────────────────────────────────────────
+
+export async function getPendingAnimals(): Promise<PendingAnimal[]> {
+    const { data, error } = await supabase
+        .from('pending_animals')
+        .select('*')
+        .order('spotted_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data ?? [];
 }
 
-/**
- * Generate a simple feature hash for animal identification
- */
-function generateFeatureHash(aiResult: AnimalIdentificationResult): string {
-    const features = `${aiResult.species}-${aiResult.breed}-${aiResult.color}`.toLowerCase();
-    let hash = 0;
-    for (let i = 0; i < features.length; i++) {
-        const char = features.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(16);
+/** Fetch animals near an org location using a bounding box (~50km default). */
+export async function getPendingAnimalsNearby(
+    lat: number,
+    lng: number,
+    radiusKm = 50
+): Promise<PendingAnimal[]> {
+    const delta = radiusKm / 111; // 1 degree ≈ 111km
+
+    const { data, error } = await supabase
+        .from('pending_animals')
+        .select('*')
+        .gte('latitude',  lat - delta)
+        .lte('latitude',  lat + delta)
+        .gte('longitude', lng - delta)
+        .lte('longitude', lng + delta)
+        .order('spotted_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data ?? [];
 }
 
-/**
- * Upload an image to Firebase Storage and get the URL
- */
-export async function uploadAnimalImage(imageUri: string, animalId: string): Promise<string> {
-    try {
-        const response = await fetch(imageUri);
-        const blob = await response.blob();
+export async function getPendingAnimalById(id: string): Promise<PendingAnimal | null> {
+    const { data, error } = await supabase
+        .from('pending_animals')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-        const timestamp = Date.now();
-        const storageRef = ref(storage, `animals/${animalId}/${timestamp}.jpg`);
-
-        await uploadBytes(storageRef, blob);
-        const downloadUrl = await getDownloadURL(storageRef);
-
-        return downloadUrl;
-    } catch (error) {
-        console.error('Error uploading image:', error);
-        throw error;
-    }
+    if (error) throw new Error(error.message);
+    return data;
 }
 
-/**
- * Search for existing animals with similar features
- */
-export async function searchSimilarAnimals(
-    species: 'dog' | 'cat',
-    breed: string,
-    color: string,
-    region?: string
-): Promise<AnimalIdentity[]> {
-    try {
-        const animalsRef = collection(db, ANIMALS_COLLECTION);
+export async function addPendingAnimal(animal: PendingAnimalInsert): Promise<PendingAnimal> {
+    const { data, error } = await supabase
+        .from('pending_animals')
+        .insert(animal)
+        .select()
+        .single();
 
-        // Query by species first (most selective)
-        let q = query(
-            animalsRef,
-            where('species', '==', species),
-            orderBy('lastSeenAt', 'desc'),
-            limit(20)
-        );
-
-        const snapshot = await getDocs(q);
-        const animals: AnimalIdentity[] = [];
-
-        snapshot.forEach((doc) => {
-            const data = doc.data() as AnimalIdentity;
-            animals.push({ ...data, id: doc.id });
-        });
-
-        // Filter by breed/color similarity (case-insensitive partial match)
-        const breedLower = breed.toLowerCase();
-        const colorLower = color.toLowerCase();
-
-        return animals.filter(animal => {
-            const animalBreed = animal.breed.toLowerCase();
-            const animalColor = animal.color.toLowerCase();
-
-            // Check for breed similarity
-            const breedMatch = animalBreed.includes(breedLower) || breedLower.includes(animalBreed);
-            // Check for color similarity
-            const colorMatch = animalColor.includes(colorLower) || colorLower.includes(animalColor);
-
-            // Filter by region if provided
-            if (region) {
-                const regionMatch = animal.lastSeenLocation?.toLowerCase().includes(region.toLowerCase());
-                return (breedMatch || colorMatch) && regionMatch;
-            }
-
-            return breedMatch || colorMatch;
-        });
-    } catch (error) {
-        console.error('Error searching animals:', error);
-        return [];
-    }
+    if (error) throw new Error(error.message);
+    return data;
 }
 
-/**
- * Get animals by region for filtering
- */
-export async function getAnimalsByRegion(region: string): Promise<AnimalIdentity[]> {
-    try {
-        const animalsRef = collection(db, ANIMALS_COLLECTION);
-        const snapshot = await getDocs(animalsRef);
-        const animals: AnimalIdentity[] = [];
+/** NGO presses "Go to Rescue" — marks the animal as claimed by their org. */
+export async function claimAnimal(animalId: string, orgId: string): Promise<void> {
+    const { error } = await supabase
+        .from('pending_animals')
+        .update({
+            claimed_by_org_id: orgId,
+            claimed_at:        new Date().toISOString(),
+            status:            'claimed',
+        })
+        .eq('id', animalId);
 
-        snapshot.forEach((doc) => {
-            const data = doc.data() as AnimalIdentity;
-            if (data.lastSeenLocation?.toLowerCase().includes(region.toLowerCase())) {
-                animals.push({ ...data, id: doc.id });
-            }
-        });
-
-        return animals;
-    } catch (error) {
-        console.error('Error getting animals by region:', error);
-        return [];
-    }
+    if (error) throw new Error(error.message);
 }
 
+// ── Rescue Confirmation ───────────────────────────────────────────────────────
+
 /**
- * Create a new animal identity in the database
+ * NGO has rescued the animal and taken a post-rescue photo.
+ * Inserts into rescued_animals (permanent archive) then deletes
+ * from pending_animals (rescue queue).
  */
-export async function createAnimalIdentity(
-    aiResult: AnimalIdentificationResult,
-    imageUrl: string,
-    reporterInfo: { userId: string; userName: string },
-    location: { address: string; coordinates?: { lat: number; lng: number } }
-): Promise<AnimalIdentity> {
-    const systemId = generateAnimalId();
-    const now = new Date().toISOString();
-
-    const animalData: Omit<AnimalIdentity, 'id'> = {
-        systemId,
-        species: aiResult.species === 'unknown' ? 'dog' : aiResult.species,
-        breed: aiResult.breed,
-        color: aiResult.color,
-        distinctiveFeatures: [aiResult.distinctiveFeatures],
-        featureHash: generateFeatureHash(aiResult),
-        primaryImageUrl: imageUrl,
-
-        status: 'waiting',
-        isVaccinated: false,
-        isNeutered: false,
-
-        firstReportedAt: now,
-        firstReportedBy: reporterInfo.userName,
-        createdBy: reporterInfo.userId,
-        lastSeenAt: now,
-        lastSeenLocation: location.address,
-
-        reportHistory: [],
-        careHistory: []
+export async function confirmRescue(
+    pending: PendingAnimal,
+    orgId: string,
+    orgName: string,
+    rescueImageUrl: string,
+    healthNotes?: string
+): Promise<RescuedAnimal> {
+    const record: RescuedAnimalInsert = {
+        animal_code:         pending.animal_code,
+        species:             pending.species,
+        injury_severity:     pending.injury_severity,
+        injury_signals:      pending.injury_signals,
+        cctv_image_url:      pending.image_url,
+        rescue_image_url:    rescueImageUrl,
+        address:             pending.address,
+        latitude:            pending.latitude,
+        longitude:           pending.longitude,
+        rescued_by_org_id:   orgId,
+        rescued_by_org_name: orgName,
+        rescued_at:          new Date().toISOString(),
+        health_notes:        healthNotes ?? null,
+        is_vaccinated:       false,
+        is_neutered:         false,
+        outcome:             'in_care',
+        outcome_date:        null,
+        outcome_notes:       null,
     };
 
-    try {
-        const docRef = await addDoc(collection(db, ANIMALS_COLLECTION), animalData);
-        return { ...animalData, id: docRef.id };
-    } catch (error) {
-        console.error('Error creating animal identity:', error);
-        throw error;
-    }
+    const { data, error: insertError } = await supabase
+        .from('rescued_animals')
+        .insert(record)
+        .select()
+        .single();
+
+    if (insertError) throw new Error(insertError.message);
+
+    const { error: deleteError } = await supabase
+        .from('pending_animals')
+        .delete()
+        .eq('id', pending.id);
+
+    if (deleteError) throw new Error(deleteError.message);
+
+    return data;
 }
 
-/**
- * Get an animal by ID
- */
-export async function getAnimalById(animalId: string): Promise<AnimalIdentity | null> {
-    try {
-        const docRef = doc(db, ANIMALS_COLLECTION, animalId);
-        const docSnap = await getDoc(docRef);
+// ── Rescued Archive ───────────────────────────────────────────────────────────
 
-        if (docSnap.exists()) {
-            return { ...docSnap.data(), id: docSnap.id } as AnimalIdentity;
-        }
-        return null;
-    } catch (error) {
-        console.error('Error getting animal:', error);
-        return null;
-    }
+export async function getRescuedAnimals(orgId: string): Promise<RescuedAnimal[]> {
+    const { data, error } = await supabase
+        .from('rescued_animals')
+        .select('*')
+        .eq('rescued_by_org_id', orgId)
+        .order('rescued_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data ?? [];
 }
 
-/**
- * Add a report to an existing animal's history
- */
-export async function addReportToAnimal(
-    animalId: string,
-    report: ReportEntry
-): Promise<void> {
-    try {
-        const animalRef = doc(db, ANIMALS_COLLECTION, animalId);
-        const animalDoc = await getDoc(animalRef);
+export async function getRescueStats(orgId: string) {
+    const { data, error } = await supabase
+        .from('rescued_animals')
+        .select('species, injury_severity, outcome, rescued_at')
+        .eq('rescued_by_org_id', orgId);
 
-        if (!animalDoc.exists()) {
-            throw new Error('Animal not found');
-        }
+    if (error) throw new Error(error.message);
+    const animals = data ?? [];
 
-        const currentData = animalDoc.data() as AnimalIdentity;
-        const updatedHistory = [...(currentData.reportHistory || []), report];
-
-        await updateDoc(animalRef, {
-            reportHistory: updatedHistory,
-            lastSeenAt: report.timestamp,
-            lastSeenLocation: report.location
-        });
-    } catch (error) {
-        console.error('Error adding report to animal:', error);
-        throw error;
-    }
+    return {
+        total:   animals.length,
+        dogs:    animals.filter(a => a.species === 'dog').length,
+        cats:    animals.filter(a => a.species === 'cat').length,
+        severe:  animals.filter(a => a.injury_severity === 'severe' || a.injury_severity === 'critical').length,
+        inCare:  animals.filter(a => a.outcome === 'in_care').length,
+        rehomed: animals.filter(a => a.outcome === 'rehomed').length,
+    };
 }
 
-/**
- * Update animal status (for NGO users)
- */
-export async function updateAnimalStatus(
-    animalId: string,
-    updates: Partial<Pick<AnimalIdentity, 'status' | 'isVaccinated' | 'vaccinationDate' | 'isNeutered' | 'assignedNgoId' | 'assignedNgoName' | 'ngoAssignedDate'>>
-): Promise<void> {
-    try {
-        const animalRef = doc(db, ANIMALS_COLLECTION, animalId);
-        await updateDoc(animalRef, updates);
-    } catch (error) {
-        console.error('Error updating animal status:', error);
-        throw error;
-    }
+// ── CLIP Embeddings ───────────────────────────────────────────────────────────
+
+export async function saveEmbedding(embedding: AnimalEmbeddingInsert): Promise<void> {
+    const { error } = await supabase
+        .from('animal_embeddings')
+        .insert(embedding);
+
+    if (error) throw new Error(error.message);
 }
-
-/**
- * Add a care entry to animal's history (NGO actions)
- */
-export async function addCareEntry(
-    animalId: string,
-    careEntry: CareEntry
-): Promise<void> {
-    try {
-        const animalRef = doc(db, ANIMALS_COLLECTION, animalId);
-        const animalDoc = await getDoc(animalRef);
-
-        if (!animalDoc.exists()) {
-            throw new Error('Animal not found');
-        }
-
-        const currentData = animalDoc.data() as AnimalIdentity;
-        const updatedHistory = [...(currentData.careHistory || []), careEntry];
-
-        await updateDoc(animalRef, {
-            careHistory: updatedHistory
-        });
-    } catch (error) {
-        console.error('Error adding care entry:', error);
-        throw error;
-    }
-}
-
-/**
- * Get all animals (with optional status filter)
- */
-export async function getAllAnimals(statusFilter?: string): Promise<AnimalIdentity[]> {
-    try {
-        const animalsRef = collection(db, ANIMALS_COLLECTION);
-        let q = query(animalsRef, orderBy('lastSeenAt', 'desc'));
-
-        if (statusFilter) {
-            q = query(animalsRef, where('status', '==', statusFilter), orderBy('lastSeenAt', 'desc'));
-        }
-
-        const snapshot = await getDocs(q);
-        const animals: AnimalIdentity[] = [];
-
-        snapshot.forEach((doc) => {
-            animals.push({ ...doc.data(), id: doc.id } as AnimalIdentity);
-        });
-
-        return animals;
-    } catch (error) {
-        console.error('Error getting all animals:', error);
-        return [];
-    }
-}
-
-/**
- * Get all animals created by a specific user
- */
-export async function getAnimalsByUser(userId: string): Promise<AnimalIdentity[]> {
-    try {
-        const animalsRef = collection(db, ANIMALS_COLLECTION);
-        const q = query(
-            animalsRef,
-            where('createdBy', '==', userId),
-            orderBy('lastSeenAt', 'desc')
-        );
-
-        const snapshot = await getDocs(q);
-        const animals: AnimalIdentity[] = [];
-
-        snapshot.forEach((doc) => {
-            animals.push({ ...doc.data(), id: doc.id } as AnimalIdentity);
-        });
-
-        return animals;
-    } catch (error) {
-        console.error('Error getting user animals:', error);
-        return [];
-    }
-}
-
-import { File } from 'expo-file-system';
-
-export const analyzeAnimalWithGemini = async (imageUri: string): Promise<AnimalIdentificationResult> => {
-    try {
-        const base64 = await FileSystem.readAsStringAsync(imageUri, {
-            encoding: FileSystem.EncodingType.Base64,
-        });
-
-        const response = await fetch(
-            'https://us-central1-pawguardai-4ee35.cloudfunctions.net/analyzeAnimal',
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ imageBase64: base64 }),
-            }
-        );
-
-        const data = await response.json();
-
-        // Map Gemini's JSON response to your App's Type
-        return {
-            species: data.species || 'unknown',
-            breed: data.breed || 'Mixed',
-            color: data.color || 'Unknown',
-            distinctiveFeatures: data.distinctiveFeatures || 'None',
-            healthNotes: data.healthStatus, // Mapping Gemini field to your app
-            isEmergency: data.isEmergency || false,
-            confidence: 1.0, // Gemini doesn't provide a 0-1 score like YOLO, so we default to 1.0
-        };
-    } catch (err) {
-        console.error('Gemini analysis failed:', err);
-        throw err;
-    }
-};
-
-
-export default {
-    uploadAnimalImage,
-    searchSimilarAnimals,
-    getAnimalsByRegion,
-    createAnimalIdentity,
-    getAnimalById,
-    addReportToAnimal,
-    updateAnimalStatus,
-    addCareEntry,
-    getAllAnimals,
-    getAnimalsByUser
-};

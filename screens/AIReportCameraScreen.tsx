@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as ImagePicker from 'expo-image-picker';
+// expo-image-picker removed — web uses PhotoUploadBox with file input
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { serifTextStyles } from '../theme/typography';
@@ -28,45 +28,21 @@ export const AIReportCameraScreen = () => {
     const secondaryBorderColor = isNGO ? '#A5E5ED' : colors.minimalist.coral;
     const secondaryTextColor = isNGO ? '#0891B2' : colors.minimalist.coral;
 
-    const takePhoto = async () => {
-        try {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Permission needed', 'Camera permission is required to identify animals.');
-                return;
-            }
-
-            const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                quality: 0.8,
-            });
-
-            if (!result.canceled) {
-                analyzeImage(result.assets[0].uri);
-            }
-        } catch (error) {
-            Alert.alert('Error', 'Failed to open camera');
-            console.error(error);
-        }
+    // Web: trigger hidden file input
+    const openFilePicker = (capture?: string) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        if (capture) input.setAttribute('capture', capture);
+        input.onchange = (e: any) => {
+            const file = e.target.files?.[0];
+            if (file) analyzeImage(URL.createObjectURL(file));
+        };
+        input.click();
     };
 
-    const pickImage = async () => {
-        try {
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                quality: 0.5,
-            });
-
-            if (!result.canceled) {
-                analyzeImage(result.assets[0].uri);
-            }
-        } catch (error) {
-            Alert.alert('Error', 'Failed to pick image');
-            console.error(error);
-        }
-    };
+    const takePhoto  = () => openFilePicker('environment');
+    const pickImage  = () => openFilePicker();
 
     const analyzeImage = async (uri: string) => {
         setImageUri(uri);

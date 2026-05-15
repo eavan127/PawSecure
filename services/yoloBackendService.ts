@@ -1,45 +1,89 @@
 /**
- * YOLO Backend Service
- * Communicates with Python Flask backend for YOLO detection
+ * PawSecure AI Backend Service
+ * Talks to the FastAPI backend (main.py) on port 8000.
+ *
+ * Available endpoints:
+ *   GET  /health     → confirm server is alive
+ *   POST /detect     → YOLO: find animals in a full frame, get bounding boxes
+ *   POST /embed      → CLIP: turn a cropped animal into a 512-number fingerprint
+ *   POST /injury     → OpenCV: estimate injury severity from a cropped animal
+ *   POST /pipeline   → all three above in one call (what screens should use)
  */
 
-import * as FileSystem from 'expo-file-system/legacy';
+// expo-file-system removed — using fetch fallback for web
 
-const BACKEND_URL = (process.env.EXPO_PUBLIC_YOLO_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+// Port changed from 5000 (Flask) to 8000 (FastAPI)
+const BACKEND_URL = (process.env.EXPO_PUBLIC_YOLO_BACKEND_URL || 'http://localhost:8000').replace(/\/$/, '');
 
-console.log(`[YOLO Service] Configured BACKEND_URL: ${BACKEND_URL}`);
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-interface BackendDetection {
+export interface BoundingBox {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+export interface AnimalDetection {
     class_id: number;
     class_name: 'dog' | 'cat';
+    confidence: number;         // 0.0 – 1.0
+    bbox: BoundingBox;
+}
+
+/** Response from POST /detect */
+export interface DetectResponse {
+    success: boolean;
+    detections: AnimalDetection[];
+    dog_detected: boolean;
+    cat_detected: boolean;
+    primary_detection: AnimalDetection | null;
+}
+
+/** Response from POST /embed */
+export interface EmbedResponse {
+    success: boolean;
+    embedding: number[];        // 512 floats — store in Supabase pgvector
+    embedding_dim: number;      // always 512
+}
+
+/** Response from POST /injury */
+export interface InjuryResponse {
+    success: boolean;
+    has_blood: boolean;
+    severity: 'none' | 'mild' | 'moderate' | 'severe';
+    signals: string[];          // e.g. ["red_region_detected"]
+}
+
+/** One animal result from POST /pipeline */
+export interface PipelineAnimal {
+    class_name: 'dog' | 'cat';
     confidence: number;
-    bbox: {
-        x: number;
-        y: number;
-        width: number;
-        height: number;
+    bbox: BoundingBox;
+    embedding: number[];        // 512 floats — save to Supabase
+    injury: {
+        has_blood: boolean;
+        severity: 'none' | 'mild' | 'moderate' | 'severe';
+        signals: string[];
     };
 }
 
-interface BackendResponse {
+/** Response from POST /pipeline */
+export interface PipelineResponse {
     success: boolean;
-    detections: BackendDetection[];
-    dog_detected: boolean;
-    cat_detected: boolean;
-    primary_detection: BackendDetection | null;
-    embedding:number[] | null;
-    error?: string;
+    animal_count: number;
+    animals: PipelineAnimal[];
 }
+
+// ── Service Class ─────────────────────────────────────────────────────────────
 
 class YOLOBackendService {
     private backendAvailable: boolean | null = null;
 
-    /**
-     * Check if backend is available
-     */
+    // ── Health ──────────────────────────────────────────────────────────────
+
     async checkHealth(): Promise<boolean> {
         try {
-            console.log(`🔍 Checking YOLO backend at ${BACKEND_URL}...`);
             const response = await fetch(`${BACKEND_URL}/health`, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' },
@@ -47,108 +91,126 @@ class YOLOBackendService {
 
             if (response.ok) {
                 const data = await response.json();
-                console.log(`✅ Backend available: ${data.model}`);
+                console.log(`[PawSecure] Backend healthy. Models: ${data.models}`);
                 this.backendAvailable = true;
                 return true;
             }
 
             this.backendAvailable = false;
             return false;
-        } catch (error) {
-            console.log('⚠️ Backend not available:', error);
+        } catch {
+            console.warn(`[PawSecure] Backend not reachable at ${BACKEND_URL}`);
             this.backendAvailable = false;
             return false;
         }
     }
 
-    /**
-     * Convert image URI to base64 using expo-file-system (more reliable)
-     */
-    private async imageToBase64(imageUri: string): Promise<string> {
-        try {
-            const base64 = await FileSystem.readAsStringAsync(imageUri, {
-                encoding: 'base64',
-            });
-            return base64;
-        } catch (error) {
-            console.error('[YOLO Service] Error reading image file:', error);
-            // Fallback to fetch if FileSystem fails
-            const response = await fetch(imageUri);
-            const blob = await response.blob();
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const res = reader.result as string;
-                    resolve(res.split(',')[1]);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
+    // ── Image helpers ───────────────────────────────────────────────────────
+
+    private async imageUriToBase64(imageUri: string): Promise<string> {
+        // Web: use FileReader (works with blob:// and file URIs)
+        const response = await fetch(imageUri);
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    private async ensureBackendReady(): Promise<void> {
+        if (this.backendAvailable) return;
+        const ok = await this.checkHealth();
+        if (!ok) {
+            throw new Error(
+                `PawSecure backend not reachable at ${BACKEND_URL}.\n` +
+                `Make sure you ran: uvicorn main:app --reload --host 0.0.0.0 --port 8000`
+            );
         }
     }
 
+    private async post<T>(endpoint: string, base64Image: string): Promise<T> {
+        const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: base64Image }),
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Backend ${endpoint} returned ${response.status}: ${text}`);
+        }
+
+        return response.json() as Promise<T>;
+    }
+
+    // ── Public Methods ──────────────────────────────────────────────────────
+
     /**
-     * Detect animals using backend YOLO service
+     * POST /pipeline — recommended method for screens to call.
+     *
+     * Takes a full CCTV frame URI and returns every animal found with:
+     * - bounding box (where it is in the frame)
+     * - embedding (512 numbers — save this to Supabase)
+     * - injury severity (none / mild / moderate / severe)
+     *
+     * Example usage in a screen:
+     *   const result = await yoloBackendService.runPipeline(photoUri);
+     *   result.animals.forEach(animal => {
+     *     console.log(animal.class_name, animal.injury.severity);
+     *     // save animal.embedding to Supabase pgvector
+     *   });
      */
-    async detectAnimals(imageUri: string): Promise<BackendResponse> {
-        console.log(`[Backend YOLO] Detecting animals...`);
+    async runPipeline(imageUri: string): Promise<PipelineResponse> {
+        await this.ensureBackendReady();
+        const base64 = await this.imageUriToBase64(imageUri);
+        const result = await this.post<PipelineResponse>('/pipeline', base64);
 
-        // Check if backend is available (re-check if it was previously false)
-        if (this.backendAvailable === null || this.backendAvailable === false) {
-            const isAvailable = await this.checkHealth();
-            if (!isAvailable) {
-                throw new Error(`YOLO Backend not reachable at ${BACKEND_URL}. Check network & server.`);
-            }
-        }
+        console.log(`[PawSecure] Pipeline found ${result.animal_count} animal(s)`);
+        return result;
+    }
 
-        try {
-            // Convert image to base64
-            const base64Image = await this.imageToBase64(imageUri);
+    /**
+     * POST /detect — use this if you only need bounding boxes.
+     *
+     * Cheaper than /pipeline — does NOT run CLIP or injury analysis.
+     * Useful for a live camera preview where you just want to draw boxes.
+     */
+    async detectAnimals(imageUri: string): Promise<DetectResponse> {
+        await this.ensureBackendReady();
+        const base64 = await this.imageUriToBase64(imageUri);
+        const result = await this.post<DetectResponse>('/detect', base64);
 
-            // Send to backend
-            console.log(`📤 Sending image to: ${BACKEND_URL}/detect`);
-            console.log(`📦 Base64 length: ${base64Image.length} characters`);
+        console.log(`[PawSecure] Detected ${result.detections.length} animal(s)`);
+        return result;
+    }
 
-            const response = await fetch(`${BACKEND_URL}/detect`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ image: base64Image }),
-            });
+    /**
+     * POST /embed — generate a 512-dim embedding for a cropped animal image.
+     *
+     * You must crop the animal first using the bbox from /detect.
+     * Store the returned embedding in Supabase animal_embeddings table.
+     *
+     * To check if two animals are the same, compare embeddings with
+     * cosine similarity in Supabase pgvector (see animalService.ts).
+     */
+    async embedAnimal(croppedImageUri: string): Promise<EmbedResponse> {
+        await this.ensureBackendReady();
+        const base64 = await this.imageUriToBase64(croppedImageUri);
+        return this.post<EmbedResponse>('/embed', base64);
+    }
 
-            console.log(`📡 Server response status: ${response.status}`);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`❌ Backend error text: ${errorText}`);
-                throw new Error(`Backend returned ${response.status}: ${errorText}`);
-            }
-
-            const result: BackendResponse = await response.json();
-
-            // Log result summary without the full embedding array (too long for terminal)
-            const resultSummary = {
-                success: result.success,
-                detections: result.detections,
-                dog_detected: result.dog_detected,
-                cat_detected: result.cat_detected,
-                primary_detection: result.primary_detection,
-                embedding: result.embedding ? `[${result.embedding.length} dimensions]` : null
-            };
-            console.log(`📥 Received result:`, JSON.stringify(resultSummary, null, 2));
-
-            if (!result.success) {
-                throw new Error(result.error || 'Detection failed');
-            }
-
-            console.log(`✅ Backend detected ${result.detections.length} animals`);
-            return result;
-
-        } catch (error: any) {
-            console.error('Backend YOLO detection failed:', error);
-            throw error;
-        }
+    /**
+     * POST /injury — classify injury severity from a cropped animal image.
+     *
+     * Returns: severity ("none" | "mild" | "moderate" | "severe")
+     * and a list of signals that triggered the classification.
+     */
+    async analyzeInjury(croppedImageUri: string): Promise<InjuryResponse> {
+        await this.ensureBackendReady();
+        const base64 = await this.imageUriToBase64(croppedImageUri);
+        return this.post<InjuryResponse>('/injury', base64);
     }
 }
 

@@ -17,15 +17,14 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+// expo-haptics removed (web has no haptic feedback)
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { serifTextStyles } from '../theme/typography';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
-import { getAllReports, subscribeToReportUpdates } from '../services/reportService';
-import { getActiveDisasterZones, subscribeToDisasterZones } from '../services/disasterService';
-import { AnimalReport, DisasterZone } from '../lib/supabaseTypes';
+import { getPendingAnimals } from '../services/animalService';
+import type { PendingAnimal } from '../lib/supabaseTypes';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -102,7 +101,7 @@ const StoryCard: React.FC<{
     }, []);
 
     const handlePress = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        
         Animated.sequence([
             Animated.timing(scaleAnim, { toValue: 0.96, duration: 100, useNativeDriver: true }),
             Animated.spring(scaleAnim, { toValue: 1, friction: 5, useNativeDriver: true }),
@@ -146,7 +145,7 @@ const UrgentReportCard: React.FC<{
     const scaleAnim = useRef(new Animated.Value(1)).current;
 
     const handlePress = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        
         Animated.sequence([
             Animated.timing(scaleAnim, { toValue: 0.97, duration: 100, useNativeDriver: true }),
             Animated.spring(scaleAnim, { toValue: 1, friction: 5, useNativeDriver: true }),
@@ -224,7 +223,7 @@ const SpotlightCard: React.FC<{
     }, []);
 
     const handlePress = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        
     };
 
     return (
@@ -363,7 +362,7 @@ export const NGOHomeScreen: React.FC = () => {
 
     const onRefresh = async () => {
         setRefreshing(true);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        
         await loadData();
         setRefreshing(false);
     };

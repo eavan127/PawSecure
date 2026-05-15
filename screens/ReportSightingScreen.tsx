@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Marker } from 'react-native-maps';
+// react-native-maps removed — web uses WebMap component
 import { PhotoUploadBox } from '../components';
 import { colors } from '../theme/colors';
 import { serifTextStyles } from '../theme/typography';
@@ -14,8 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useReports } from '../contexts/ReportContext';
 import { getCurrentLocation } from '../services/locationService';
-import { createReport } from '../services/reportService';
-import { getCurrentWeather, WeatherData } from '../services/weatherService';
+import { addPendingAnimal } from '../services/animalService';
 import { useAuth } from '../contexts/AuthContext';
 
 export const ReportSightingScreen = () => {
@@ -100,23 +99,8 @@ export const ReportSightingScreen = () => {
         fetchLocation();
     }, []);
 
-    // Fetch weather when location is available
-    useEffect(() => {
-        const fetchWeather = async () => {
-            if (location.latitude && location.longitude && !isDetectingLocation) {
-                const weatherData = await getCurrentWeather(location.latitude, location.longitude);
-                if (weatherData) {
-                    setWeather(weatherData);
-                    console.log('🌤️ Weather fetched:', weatherData.condition, weatherData.temperature + '°C');
-                }
-            }
-        };
-        fetchWeather();
-    }, [location, isDetectingLocation]);
-
     const [reportId, setReportId] = useState('Generating...');
     const [isSaving, setIsSaving] = useState(false);
-    const [weather, setWeather] = useState<WeatherData | null>(null);
 
     const handleSubmit = async () => {
         if (!photoUri) {
@@ -269,18 +253,11 @@ export const ReportSightingScreen = () => {
                     <Text style={styles.sectionLabel}>Detection Location</Text>
                     <FloatingCard shadow="soft">
                         <View style={styles.mapContainer}>
-                            <MapView
-                                style={styles.map}
-                                initialRegion={{
-                                    ...location,
-                                    latitudeDelta: 0.1,
-                                    longitudeDelta: 0.1,
-                                }}
-                                scrollEnabled={false}
-                                zoomEnabled={false}
-                            >
-                                <Marker coordinate={location} />
-                            </MapView>
+                            <iframe
+                                title="sighting-location"
+                                style={{ width: '100%', height: '100%', border: 'none', borderRadius: 8 }}
+                                src={`https://www.openstreetmap.org/export/embed.html?bbox=${location.longitude - 0.05},${location.latitude - 0.05},${location.longitude + 0.05},${location.latitude + 0.05}&layer=mapnik&marker=${location.latitude},${location.longitude}`}
+                            />
                         </View>
                         <View style={styles.locationRow}>
                             <View style={styles.locationStatus}>

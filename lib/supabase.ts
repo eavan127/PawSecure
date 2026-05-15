@@ -1,21 +1,22 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Database } from './supabaseTypes';
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl  = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseKey  = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Create the Supabase client with proper typing
-export const supabase: SupabaseClient<Database> = createClient<Database>(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-        auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: false,
-        },
-    }
-);
+console.log('[Supabase] URL:', supabaseUrl);
+console.log('[Supabase] Key starts with:', supabaseKey?.slice(0, 20));
 
-// Re-export Database type for use in other files
-export type { Database };
+if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+        'Missing Supabase env vars.\n' +
+        'Copy .env.example → .env and fill in your project URL and anon key.'
+    );
+}
+
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+        persistSession:    true,
+        autoRefreshToken:  true,
+        detectSessionInUrl: false,
+    },
+});

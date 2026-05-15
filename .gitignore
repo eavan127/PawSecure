@@ -41,10 +41,12 @@ yarn-error.*
 /android
 
 # Python virtual environments
+venv/
 .venv/
 backend/venv/
 __pycache__/
 *.pyc
+*.pyo
 
 # Environment variables
 .env*.local
