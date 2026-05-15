@@ -1,164 +1,59 @@
-// Location Service - GPS and geocoding utilities
-import * as Location from 'expo-location';
+/**
+ * Location Service — uses browser Geolocation API (web-compatible).
+ * Replaces expo-location which is mobile-only.
+ */
 
 export interface LocationResult {
     success: boolean;
-    coordinates?: {
-        latitude: number;
-        longitude: number;
-    };
+    coordinates?: { latitude: number; longitude: number };
     address?: string;
     error?: string;
 }
 
-export interface PermissionResult {
-    granted: boolean;
-    canAskAgain: boolean;
-}
-
-/**
- * Request location permission from the user
- */
-export async function requestLocationPermission(): Promise<PermissionResult> {
-    try {
-        const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
-        return {
-            granted: status === 'granted',
-            canAskAgain
-        };
-    } catch (error) {
-        console.error('Error requesting location permission:', error);
-        return { granted: false, canAskAgain: false };
-    }
-}
-
-/**
- * Check current location permission status
- */
-export async function checkLocationPermission(): Promise<PermissionResult> {
-    try {
-        const { status, canAskAgain } = await Location.getForegroundPermissionsAsync();
-        return {
-            granted: status === 'granted',
-            canAskAgain
-        };
-    } catch (error) {
-        console.error('Error checking location permission:', error);
-        return { granted: false, canAskAgain: false };
-    }
-}
-
-/**
- * Get current GPS coordinates
- */
 export async function getCurrentLocation(): Promise<LocationResult> {
-    try {
-        // Check permission first
-        const permission = await checkLocationPermission();
-        if (!permission.granted) {
-            return {
-                success: false,
-                error: 'Location permission not granted'
-            };
-        }
+    if (!navigator.geolocation) {
+        return { success: false, error: 'Geolocation not supported in this browser' };
+    }
 
-        const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced
-        });
+    return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
 
-        // Reverse geocode to get address
-        const [address] = await Location.reverseGeocodeAsync({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude
-        });
-
-        let addressString = 'Unknown location';
-        if (address) {
-            const parts = [
-                address.street,
-                address.district,
-                address.city,
-                address.region,
-                address.country
-            ].filter(Boolean);
-            addressString = parts.join(', ');
-        }
-
-        return {
-            success: true,
-            coordinates: {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude
+                // Use OpenStreetMap Nominatim for reverse geocoding (free, no API key)
+                try {
+                    const res = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
+                    );
+                    const data = await res.json();
+                    resolve({
+                        success: true,
+                        coordinates: { latitude, longitude },
+                        address: data.display_name ?? 'Unknown location',
+                    });
+                } catch {
+                    resolve({
+                        success: true,
+                        coordinates: { latitude, longitude },
+                        address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+                    });
+                }
             },
-            address: addressString
-        };
-    } catch (error) {
-        console.error('Error getting current location:', error);
-        return {
-            success: false,
-            error: String(error)
-        };
-    }
+            (error) => resolve({ success: false, error: error.message }),
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    });
 }
 
-/**
- * Geocode an address string to coordinates
- */
-export async function geocodeAddress(address: string): Promise<LocationResult> {
-    try {
-        const results = await Location.geocodeAsync(address);
-
-        if (results.length === 0) {
-            return {
-                success: false,
-                error: 'No results found for this address'
-            };
-        }
-
-        const { latitude, longitude } = results[0];
-
-        return {
-            success: true,
-            coordinates: { latitude, longitude },
-            address
-        };
-    } catch (error) {
-        console.error('Error geocoding address:', error);
-        return {
-            success: false,
-            error: String(error)
-        };
-    }
-}
-
-/**
- * Calculate distance between two coordinates in kilometers
- */
-export function calculateDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-): number {
-    const R = 6371; // Earth's radius in km
+/** Calculate straight-line distance between two GPS points in kilometres. */
+export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371;
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
     const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function toRad(deg: number): number {
-    return deg * (Math.PI / 180);
-}
-
-export default {
-    requestLocationPermission,
-    checkLocationPermission,
-    getCurrentLocation,
-    geocodeAddress,
-    calculateDistance
-};
+function toRad(deg: number) { return deg * (Math.PI / 180); }

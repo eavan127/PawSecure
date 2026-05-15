@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+// expo-haptics removed
 import { spacing } from '../../theme/spacing';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -105,7 +105,7 @@ export default function LandingScreen() {
 
     const handlePressIn = (scale: Animated.Value) => {
         if (Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            
         }
         Animated.spring(scale, {
             toValue: 0.98,

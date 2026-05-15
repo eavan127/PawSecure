@@ -1,290 +1,185 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { UserRole } from '../types';
-import { supabase } from '../lib/supabase';
-import { DbUser, DbUserInsert } from '../lib/supabaseTypes';
+/**
+ * AuthContext — PawSecure org-only authentication.
+ * Only NGOs / SPCA / volunteer organisations can register.
+ * Uses Supabase Auth for credentials + `organizations` table for profile.
+ */
 
-interface User {
-    id: string;
-    email: string;
-    name: string;
-    role: UserRole;
-    phone?: string;
-    organizationName?: string;
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
+import type { Organization } from '../lib/supabaseTypes';
+
+// What the rest of the app sees about the current logged-in org
+export interface OrgUser {
+    id:              string;   // = Supabase auth user UUID
+    email:           string;
+    name:            string;   // organisation name
+    phone:           string | null;
+    registrationNo:  string | null;
+    address:         string | null;
+    latitude:        number | null;
+    longitude:       number | null;
+    isVerified:      boolean;
     profileComplete: boolean;
 }
 
 interface AuthContextType {
-    user: User | null;
-    isLoading: boolean;
+    user:            OrgUser | null;
+    isLoading:       boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string, role?: UserRole) => Promise<void>;
-    logout: () => Promise<void>;
-    register: (
-        email: string,
-        password: string,
-        name: string,
-        role: UserRole,
-        phone?: string,
-        orgName?: string,
-        regNumber?: string,
-        country?: string
-    ) => Promise<void>;
-    updateProfile: (updates: Partial<User>) => Promise<void>;
+    login:           (email: string, password: string) => Promise<void>;
+    register:        (params: RegisterParams) => Promise<void>;
+    updateProfile:   (updates: Partial<OrgUser>) => Promise<void>;
+    logout:          () => Promise<void>;
+}
+
+export interface RegisterParams {
+    email:      string;
+    password:   string;
+    name:       string;        // organisation name
+    phone:      string;
+    regNumber?: string;
+    country?:   string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function profileFromRow(row: Organization): OrgUser {
+    return {
+        id:             row.id,
+        email:          row.email,
+        name:           row.name,
+        phone:          row.phone,
+        registrationNo: row.registration_no,
+        address:        row.address,
+        latitude:       row.latitude,
+        longitude:      row.longitude,
+        isVerified:     row.is_verified,
+        profileComplete: !!(row.name && row.phone),
+    };
+}
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser]       = useState<OrgUser | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        loadStoredUser();
+        // Load session on mount
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
+            if (session?.user) await fetchProfile(session.user.id);
+            setIsLoading(false);
+        });
+
+        // Keep in sync when auth state changes (tab focus, token refresh)
+        const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (session?.user) {
+                await fetchProfile(session.user.id);
+            } else {
+                setUser(null);
+            }
+        });
+
+        return () => listener.subscription.unsubscribe();
     }, []);
 
-    const loadStoredUser = async () => {
-        try {
-            // Get current session from Supabase
-            const { data: { session } } = await supabase.auth.getSession();
+    const fetchProfile = async (authId: string) => {
+        const { data, error } = await supabase
+            .from('organizations')
+            .select('*')
+            .eq('id', authId)
+            .single();
 
-            if (session?.user) {
-                // Fetch user profile from database
-                const { data: profile, error } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
-
-                if (error) {
-                    console.error('Error fetching user profile:', error);
-                    return;
-                }
-
-                if (profile) {
-                    setUser({
-                        id: profile.id,
-                        email: profile.email,
-                        name: profile.name,
-                        role: profile.role as UserRole,
-                        phone: profile.phone || undefined,
-                        organizationName: profile.ngo_name || undefined,
-                        profileComplete: !!(profile.name && profile.role && profile.phone),
-                    });
-                }
-            }
-        } catch (error) {
-            console.error('Failed to load user session:', error);
-        } finally {
-            setIsLoading(false);
-        }
+        if (error) console.error('[fetchProfile] error:', JSON.stringify(error));
+        if (!error && data) setUser(profileFromRow(data));
     };
 
-    const login = async (email: string, password: string, role: UserRole = 'citizen') => {
+    const login = async (email: string, password: string) => {
         setIsLoading(true);
-        const trimmedEmail = email.trim();
-        const trimmedPassword = password.trim();
-
         try {
-            // Sign in with Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                email: trimmedEmail,
-                password: trimmedPassword,
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: email.trim(),
+                password: password.trim(),
             });
-
-            if (authError) {
-                console.error('❌ Supabase login error:', authError);
-                throw authError;
-            }
-            if (!authData.user) throw new Error('No user returned from login');
-
-            // Fetch user profile from database
-            const { data: profile, error: profileError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', authData.user.id)
-                .single();
-
-            if (profileError) {
-                console.error('Error fetching user profile:', profileError);
-                throw profileError;
-            }
-
-            if (profile) {
-                setUser({
-                    id: profile.id,
-                    email: profile.email,
-                    name: profile.name,
-                    role: profile.role as UserRole,
-                    phone: profile.phone || undefined,
-                    organizationName: profile.ngo_name || undefined,
-                    profileComplete: !!(profile.name && profile.role && profile.phone),
-                });
-            }
-        } catch (error: any) {
-            console.error('Login failed:', error);
-            throw new Error(error.message || 'Login failed');
+            if (error) throw error;
+            if (!data.user) throw new Error('Login failed — no user returned.');
+            await fetchProfile(data.user.id);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const register = async (
-        email: string,
-        password: string,
-        name: string,
-        role: UserRole,
-        phone?: string,
-        orgName?: string,
-        regNumber?: string,
-        country?: string
-    ) => {
+    const register = async ({ email, password, name, phone, regNumber, country }: RegisterParams) => {
         setIsLoading(true);
-        const trimmedEmail = email.trim();
-        const trimmedPassword = password.trim();
-
         try {
-            // Sign up with Supabase Auth
+            // 1. Create Supabase Auth account
             const { data: authData, error: authError } = await supabase.auth.signUp({
-                email: trimmedEmail,
-                password: trimmedPassword,
+                email: email.trim(),
+                password: password.trim(),
             });
-
             if (authError) throw authError;
-            if (!authData.user) throw new Error('No user returned from signup');
+            if (!authData.user) throw new Error('Signup failed — no user returned.');
 
-            console.log('✅ Supabase Auth user created:', authData.user.id);
-
-            // Upsert user details into users table
-            // Using upsert to handle potential triggers or race conditions that might create the user record early
-            const profileComplete = !!(name && role && (role === 'ngo' ? (orgName && regNumber && country) : true) && phone);
-
-            const userInsert: DbUserInsert = {
-                id: authData.user.id,
-                email,
-                name,
-                role,
-                phone: phone || null,
-                ngo_name: orgName || null,
-            };
-
-            const { data: profile, error: profileError } = await supabase
-                .from('users')
-                .upsert(userInsert)
+            // 2. Insert org profile using the auth UUID as primary key
+            //    so we can always find it with auth.uid()
+            const { data: org, error: insertError } = await supabase
+                .from('organizations')
+                .insert({
+                    id:              authData.user.id,   // ← links auth ↔ profile
+                    email:           email.trim(),
+                    name:            name.trim(),
+                    phone:           phone.trim() || null,
+                    registration_no: regNumber?.trim() || null,
+                    address:         country?.trim() || null,
+                    is_verified:     false,
+                })
                 .select()
                 .single();
 
-            if (profileError) {
-                console.error('❌ Error creating user profile:', profileError);
-                throw profileError;
+            if (insertError) {
+                console.error('[register] insert error:', JSON.stringify(insertError));
+                throw insertError;
             }
-
-            console.log('✅ User profile upserted in database:', profile.id);
-
-            // If NGO, create the NGO profile entry
-            if (role === 'ngo') {
-                const ngoInsert = {
-                    user_id: profile.id,
-                    organization_name: orgName || name,
-                    registration_number: regNumber || 'PENDING',
-                    office_address: country || 'Unknown', // Using country as a temporary address placeholder if not provided
-                    office_phone: phone || 'N/A',
-                    email: email,
-                };
-
-                const { error: ngoError } = await supabase
-                    .from('ngo_profiles')
-                    .upsert(ngoInsert);
-
-                if (ngoError) {
-                    console.error('❌ Error creating NGO profile:', ngoError);
-                    // We don't throw here to allow the user to still log in, but we log it
-                } else {
-                    console.log('✅ NGO profile created');
-                }
-            }
-
-            setUser({
-                id: profile.id,
-                email: profile.email,
-                name: profile.name,
-                role: profile.role as UserRole,
-                phone: profile.phone || undefined,
-                organizationName: profile.ngo_name || undefined,
-                profileComplete,
-            });
-        } catch (error: any) {
-            console.error('❌ Registration failed:', error);
-            throw new Error(error.message || 'Registration failed');
+            setUser(profileFromRow(org));
         } finally {
             setIsLoading(false);
         }
     };
 
-    const updateProfile = async (updates: Partial<User>) => {
+    const updateProfile = async (updates: Partial<OrgUser>) => {
         if (!user) return;
+        const { error } = await supabase
+            .from('organizations')
+            .update({
+                name:            updates.name,
+                phone:           updates.phone,
+                registration_no: updates.registrationNo,
+                address:         updates.address,
+                latitude:        updates.latitude,
+                longitude:       updates.longitude,
+            })
+            .eq('id', user.id);
 
-        try {
-            const { error } = await supabase
-                .from('users')
-                .update({
-                    name: updates.name,
-                    phone: updates.phone || null,
-                    ngo_name: updates.organizationName || null,
-                })
-                .eq('id', user.id);
-
-            if (error) throw error;
-
-            const updatedUser = { ...user, ...updates };
-            const profileComplete = !!(
-                updatedUser.name &&
-                updatedUser.role &&
-                updatedUser.phone &&
-                (updatedUser.role === 'ngo' ? updatedUser.organizationName : true)
-            );
-
-            updatedUser.profileComplete = profileComplete;
-            setUser(updatedUser);
-
-            console.log('✅ Profile updated successfully');
-        } catch (error: any) {
-            console.error('❌ Failed to update profile:', error);
-            throw new Error(error.message || 'Update failed');
-        }
+        if (error) throw new Error(error.message);
+        setUser(prev => prev ? { ...prev, ...updates } : prev);
     };
 
     const logout = async () => {
-        try {
-            await supabase.auth.signOut();
-            console.log('✅ Logged out successfully');
-        } catch (error: any) {
-            console.error('❌ Failed to logout:', error);
-        } finally {
-            setUser(null);
-        }
+        await supabase.auth.signOut();
+        setUser(null);
     };
 
     return (
-        <AuthContext.Provider
-            value={{
-                user,
-                isLoading,
-                isAuthenticated: !!user,
-                login,
-                logout,
-                register,
-                updateProfile,
-            }}
-        >
+        <AuthContext.Provider value={{
+            user, isLoading,
+            isAuthenticated: !!user,
+            login, register, updateProfile, logout,
+        }}>
             {children}
         </AuthContext.Provider>
     );
 };
 
 export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error('useAuth must be used within AuthProvider');
-    }
-    return context;
+    const ctx = useContext(AuthContext);
+    if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
+    return ctx;
 };

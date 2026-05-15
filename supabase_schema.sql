@@ -1,452 +1,248 @@
--- ============================================================
--- PawGuard AI - Supabase Database Schema
--- ============================================================
--- Run this in your Supabase SQL Editor (Dashboard > SQL Editor)
--- ============================================================
+-- ================================================================
+-- PawSecure — Clean Supabase Schema
+-- Run this in: Supabase Dashboard > SQL Editor > New Query
+-- ================================================================
+-- Purpose: Track injured stray animals via CCTV in Malaysia.
+--          NGOs/SPCA can see nearby animals, claim them for rescue,
+--          and build a permanent archive of all animals they have saved.
+-- ================================================================
 
--- Enable the pgvector extension for CLIP embedding storage
+-- STEP 0: Enable the vector extension (needed for CLIP embeddings)
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- ============================================================
--- 1. USERS TABLE
--- ============================================================
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    role TEXT CHECK (role IN ('citizen', 'ngo')) NOT NULL DEFAULT 'citizen',
-    phone TEXT,
-    ngo_name TEXT, -- Only for NGO users
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- ================================================================
+-- TABLE 1: organizations
+-- Who can log in. Only verified NGOs / volunteer orgs / SPCA.
+-- No public citizen accounts — this app is org-only.
+-- ================================================================
+CREATE TABLE IF NOT EXISTS organizations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email           TEXT UNIQUE NOT NULL,
+    name            TEXT NOT NULL,               -- e.g. "SPCA Selangor"
+    phone           TEXT,
+    registration_no TEXT,                        -- official registration number
+    address         TEXT,
+    latitude        DOUBLE PRECISION,            -- org HQ location (shown on map)
+    longitude       DOUBLE PRECISION,
+    logo_url        TEXT,
+    is_verified     BOOLEAN DEFAULT FALSE,       -- admin verifies the org
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ============================================================
--- 2. ANIMAL REPORTS TABLE (Main reports from users)
--- ============================================================
-CREATE TABLE IF NOT EXISTS animal_reports (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    report_id TEXT UNIQUE NOT NULL, -- e.g., "RPT-2024-0001"
-    
-    -- Reporter Info
-    reporter_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    reporter_name TEXT NOT NULL,
-    reporter_phone TEXT,
-    
-    -- Animal Info (from YOLO + CLIP + Gemini AI)
-    species TEXT CHECK (species IN ('dog', 'cat', 'unknown')) NOT NULL,
-    breed TEXT,
-    color TEXT,
-    distinctive_features TEXT,
-    health_notes TEXT,
-    is_emergency BOOLEAN DEFAULT FALSE,
-    
-    -- Image & Identity
-    image_url TEXT NOT NULL,
-    animal_id TEXT NOT NULL, -- Unique animal ID like "DOG-XXXX"
-    
-    -- Location
-    address TEXT NOT NULL,
-    latitude DOUBLE PRECISION,
-    longitude DOUBLE PRECISION,
-    
-    -- Weather at time of report
-    weather_condition TEXT,
-    temperature DOUBLE PRECISION,
-    weather_alert TEXT,
-    
-    -- Care Status (multiple options - all editable by NGO)
-    is_vaccinated BOOLEAN DEFAULT FALSE,
-    vaccination_date DATE,
-    vaccination_notes TEXT,
-    is_neutered BOOLEAN DEFAULT FALSE,
-    neutered_date DATE,
-    is_rescued BOOLEAN DEFAULT FALSE,
-    rescue_date DATE,
-    rescue_notes TEXT,
-    
-    -- Status (real-time updates)
-    status TEXT CHECK (status IN ('new', 'in_progress', 'rescued', 'resolved', 'adopted')) DEFAULT 'new',
-    disaster_mode BOOLEAN DEFAULT FALSE,
-    
-    -- NGO Assignment
-    assigned_ngo_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    assigned_ngo_name TEXT,
-    ngo_notes TEXT,
-    
-    -- Timestamps
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    resolved_at TIMESTAMPTZ
+-- ================================================================
+-- TABLE 2: pending_animals
+-- Every animal detected by CCTV that has NOT been rescued yet.
+-- This is the live "rescue queue" NGOs browse.
+-- When rescued → row is DELETED from here, inserted into rescued_animals.
+-- ================================================================
+CREATE TABLE IF NOT EXISTS pending_animals (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Unique animal identity (format: PS-2025-XXXXXX)
+    animal_code     TEXT UNIQUE NOT NULL,
+
+    -- What the AI detected
+    species         TEXT CHECK (species IN ('dog', 'cat')) NOT NULL,
+    injury_severity TEXT CHECK (injury_severity IN ('none', 'mild', 'moderate', 'severe', 'critical'))
+                         NOT NULL DEFAULT 'none',
+    injury_signals  TEXT[],      -- e.g. ARRAY['red_region_detected', 'abnormal_aspect_ratio']
+    ai_confidence   FLOAT,       -- YOLO detection confidence (0.0 – 1.0)
+
+    -- Image captured from CCTV
+    image_url       TEXT NOT NULL,
+
+    -- Where it was spotted
+    address         TEXT,
+    latitude        DOUBLE PRECISION NOT NULL,
+    longitude       DOUBLE PRECISION NOT NULL,
+    spotted_at      TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Which org claimed this animal for rescue (null = unclaimed)
+    claimed_by_org_id   UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    claimed_at          TIMESTAMPTZ,
+
+    -- Status in the rescue workflow
+    status          TEXT CHECK (status IN ('sighted', 'claimed', 'en_route'))
+                         NOT NULL DEFAULT 'sighted',
+
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ============================================================
--- 3. ANIMAL EMBEDDINGS TABLE (CLIP vectors for identity matching)
--- ============================================================
+-- ================================================================
+-- TABLE 3: rescued_animals
+-- Permanent, forever record of every animal an org has rescued.
+-- Rows are NEVER deleted — this is the archive.
+-- ================================================================
+CREATE TABLE IF NOT EXISTS rescued_animals (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Carry over from pending_animals
+    animal_code     TEXT NOT NULL,
+    species         TEXT CHECK (species IN ('dog', 'cat')) NOT NULL,
+    injury_severity TEXT CHECK (injury_severity IN ('none', 'mild', 'moderate', 'severe', 'critical')),
+    injury_signals  TEXT[],
+
+    -- Images: before (CCTV) and after (NGO rescue photo)
+    cctv_image_url      TEXT,       -- original sighting image
+    rescue_image_url    TEXT,       -- photo taken by NGO when they rescued it
+
+    -- Location it was rescued from
+    address         TEXT,
+    latitude        DOUBLE PRECISION,
+    longitude       DOUBLE PRECISION,
+
+    -- Which org rescued it
+    rescued_by_org_id   UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    rescued_by_org_name TEXT,
+    rescued_at          TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Post-rescue care notes
+    health_notes    TEXT,
+    is_vaccinated   BOOLEAN DEFAULT FALSE,
+    is_neutered     BOOLEAN DEFAULT FALSE,
+
+    -- Final outcome
+    outcome         TEXT CHECK (outcome IN ('in_care', 'rehomed', 'released', 'deceased'))
+                         DEFAULT 'in_care',
+    outcome_date    TIMESTAMPTZ,
+    outcome_notes   TEXT,
+
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================================================
+-- TABLE 4: animal_embeddings
+-- CLIP vector fingerprints for re-identifying the same animal
+-- across multiple CCTV sightings.
+-- ================================================================
 CREATE TABLE IF NOT EXISTS animal_embeddings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    animal_id TEXT UNIQUE NOT NULL, -- Links to animal_reports.animal_id
-    embedding VECTOR(512), -- 512-dimension CLIP embedding
-    image_url TEXT NOT NULL,
-    species TEXT CHECK (species IN ('dog', 'cat')) NOT NULL,
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    last_seen_at TIMESTAMPTZ DEFAULT NOW(),
-    sighting_count INTEGER DEFAULT 1
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    animal_code     TEXT NOT NULL,          -- links to pending_animals.animal_code
+    species         TEXT CHECK (species IN ('dog', 'cat')) NOT NULL,
+    embedding       VECTOR(512) NOT NULL,   -- 512-dim OpenCLIP ViT-B-32 vector
+    image_url       TEXT NOT NULL,
+    sighting_count  INTEGER DEFAULT 1,      -- how many times this animal has been seen
+    first_seen_at   TIMESTAMPTZ DEFAULT NOW(),
+    last_seen_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ============================================================
--- 4. DISASTER ZONES TABLE
--- ============================================================
-CREATE TABLE IF NOT EXISTS disaster_zones (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    description TEXT,
-    
-    -- Geographic bounds
-    center_latitude DOUBLE PRECISION NOT NULL,
-    center_longitude DOUBLE PRECISION NOT NULL,
-    radius_km DOUBLE PRECISION DEFAULT 50,
-    
-    -- Status
-    is_active BOOLEAN DEFAULT TRUE,
-    severity TEXT CHECK (severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
-    
-    -- Timestamps
-    activated_at TIMESTAMPTZ DEFAULT NOW(),
-    deactivated_at TIMESTAMPTZ,
-    
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- ================================================================
+-- INDEXES — speeds up the queries the app runs most often
+-- ================================================================
+-- NGOs filter pending animals by location and status
+CREATE INDEX IF NOT EXISTS idx_pending_location   ON pending_animals(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_pending_status     ON pending_animals(status);
+CREATE INDEX IF NOT EXISTS idx_pending_severity   ON pending_animals(injury_severity);
+CREATE INDEX IF NOT EXISTS idx_pending_claimed    ON pending_animals(claimed_by_org_id);
 
--- ============================================================
--- 5. STATUS HISTORY TABLE (for real-time tracking)
--- ============================================================
-CREATE TABLE IF NOT EXISTS status_history (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    report_id UUID REFERENCES animal_reports(id) ON DELETE CASCADE,
-    
-    old_status TEXT,
-    new_status TEXT NOT NULL,
-    action_type TEXT CHECK (action_type IN ('status_change', 'vaccination', 'neutering', 'rescue', 'assignment')) NOT NULL,
-    changed_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    changed_by_name TEXT,
-    notes TEXT,
-    
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Org archive queries
+CREATE INDEX IF NOT EXISTS idx_rescued_org        ON rescued_animals(rescued_by_org_id);
+CREATE INDEX IF NOT EXISTS idx_rescued_date       ON rescued_animals(rescued_at);
+CREATE INDEX IF NOT EXISTS idx_rescued_species    ON rescued_animals(species);
 
--- ============================================================
--- INDEXES for faster queries
--- ============================================================
-CREATE INDEX IF NOT EXISTS idx_reports_status ON animal_reports(status);
-CREATE INDEX IF NOT EXISTS idx_reports_disaster ON animal_reports(disaster_mode);
-CREATE INDEX IF NOT EXISTS idx_reports_location ON animal_reports(latitude, longitude);
-CREATE INDEX IF NOT EXISTS idx_reports_reporter ON animal_reports(reporter_id);
-CREATE INDEX IF NOT EXISTS idx_reports_ngo ON animal_reports(assigned_ngo_id);
-CREATE INDEX IF NOT EXISTS idx_reports_animal_id ON animal_reports(animal_id);
-CREATE INDEX IF NOT EXISTS idx_embeddings_animal ON animal_embeddings(animal_id);
-CREATE INDEX IF NOT EXISTS idx_status_history_report ON status_history(report_id);
-CREATE INDEX IF NOT EXISTS idx_disaster_zones_active ON disaster_zones(is_active);
+-- CLIP lookup
+CREATE INDEX IF NOT EXISTS idx_embeddings_code    ON animal_embeddings(animal_code);
 
--- ============================================================
--- ROW LEVEL SECURITY (RLS)
--- ============================================================
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE animal_reports ENABLE ROW LEVEL SECURITY;
-ALTER TABLE animal_embeddings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE disaster_zones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE status_history ENABLE ROW LEVEL SECURITY;
+-- Org map
+CREATE INDEX IF NOT EXISTS idx_orgs_location      ON organizations(latitude, longitude);
 
--- RLS Policies for animal_reports
--- Drop existing policies first (for re-running)
-DROP POLICY IF EXISTS "Anyone can view reports" ON animal_reports;
-DROP POLICY IF EXISTS "Anyone can insert reports" ON animal_reports;
-DROP POLICY IF EXISTS "Anyone can update reports" ON animal_reports;
+-- ================================================================
+-- ROW LEVEL SECURITY
+-- ================================================================
+ALTER TABLE organizations      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pending_animals    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rescued_animals    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE animal_embeddings  ENABLE ROW LEVEL SECURITY;
 
--- Anyone can view all reports
-CREATE POLICY "Anyone can view reports" ON animal_reports 
-FOR SELECT USING (true);
+-- Drop before recreating (safe to re-run)
+DROP POLICY IF EXISTS "orgs_select"           ON organizations;
+DROP POLICY IF EXISTS "orgs_update_own"       ON organizations;
+DROP POLICY IF EXISTS "pending_select"        ON pending_animals;
+DROP POLICY IF EXISTS "pending_insert"        ON pending_animals;
+DROP POLICY IF EXISTS "pending_update"        ON pending_animals;
+DROP POLICY IF EXISTS "pending_delete"        ON pending_animals;
+DROP POLICY IF EXISTS "rescued_select"        ON rescued_animals;
+DROP POLICY IF EXISTS "rescued_insert"        ON rescued_animals;
+DROP POLICY IF EXISTS "embeddings_select"     ON animal_embeddings;
+DROP POLICY IF EXISTS "embeddings_insert"     ON animal_embeddings;
 
--- Anyone can insert reports (for now, you can restrict later)
-CREATE POLICY "Anyone can insert reports" ON animal_reports 
-FOR INSERT WITH CHECK (true);
+-- Organizations: any logged-in user can read all orgs (needed for map)
+CREATE POLICY "orgs_select"       ON organizations FOR SELECT USING (true);
+CREATE POLICY "orgs_update_own"   ON organizations FOR UPDATE
+    USING (auth.uid()::TEXT = id::TEXT);
 
--- Anyone can update reports (for now, you can restrict to NGOs later)
-CREATE POLICY "Anyone can update reports" ON animal_reports 
-FOR UPDATE USING (true);
+-- Pending animals: any logged-in org can read + claim
+CREATE POLICY "pending_select"    ON pending_animals FOR SELECT USING (true);
+CREATE POLICY "pending_insert"    ON pending_animals FOR INSERT WITH CHECK (true);
+CREATE POLICY "pending_update"    ON pending_animals FOR UPDATE USING (true);
+CREATE POLICY "pending_delete"    ON pending_animals FOR DELETE USING (true);
 
--- RLS Policies for other tables (drop first)
-DROP POLICY IF EXISTS "Anyone can view embeddings" ON animal_embeddings;
-DROP POLICY IF EXISTS "Anyone can insert embeddings" ON animal_embeddings;
-DROP POLICY IF EXISTS "Anyone can view disaster_zones" ON disaster_zones;
-DROP POLICY IF EXISTS "Anyone can insert disaster_zones" ON disaster_zones;
-DROP POLICY IF EXISTS "Anyone can update disaster_zones" ON disaster_zones;
-DROP POLICY IF EXISTS "Anyone can view status_history" ON status_history;
-DROP POLICY IF EXISTS "Anyone can insert status_history" ON status_history;
-DROP POLICY IF EXISTS "Anyone can view users" ON users;
-DROP POLICY IF EXISTS "Anyone can insert users" ON users;
+-- Rescued animals: any org can read; only inserting org can write
+CREATE POLICY "rescued_select"    ON rescued_animals FOR SELECT USING (true);
+CREATE POLICY "rescued_insert"    ON rescued_animals FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Anyone can view embeddings" ON animal_embeddings FOR SELECT USING (true);
-CREATE POLICY "Anyone can insert embeddings" ON animal_embeddings FOR INSERT WITH CHECK (true);
+-- Embeddings: any org can read; backend inserts
+CREATE POLICY "embeddings_select" ON animal_embeddings FOR SELECT USING (true);
+CREATE POLICY "embeddings_insert" ON animal_embeddings FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Anyone can view disaster_zones" ON disaster_zones FOR SELECT USING (true);
-CREATE POLICY "Anyone can insert disaster_zones" ON disaster_zones FOR INSERT WITH CHECK (true);
-CREATE POLICY "Anyone can update disaster_zones" ON disaster_zones FOR UPDATE USING (true);
+-- ================================================================
+-- REALTIME — lets the app get live updates without polling
+-- ================================================================
+DO $$ BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE pending_animals;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE POLICY "Anyone can view status_history" ON status_history FOR SELECT USING (true);
-CREATE POLICY "Anyone can insert status_history" ON status_history FOR INSERT WITH CHECK (true);
+DO $$ BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE rescued_animals;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE POLICY "Anyone can view users" ON users FOR SELECT USING (true);
-CREATE POLICY "Anyone can insert users" ON users FOR INSERT WITH CHECK (true);
+-- ================================================================
+-- CLIP SIMILARITY FUNCTION
+-- Called by animalService.ts → findSimilarAnimals()
+-- Returns animals whose embedding is within match_threshold cosine similarity.
+-- ================================================================
+CREATE OR REPLACE FUNCTION match_animal_embeddings(
+    query_embedding VECTOR(512),
+    match_threshold FLOAT DEFAULT 0.8,
+    match_count     INT   DEFAULT 5
+)
+RETURNS TABLE (
+    animal_code TEXT,
+    similarity  FLOAT,
+    image_url   TEXT
+)
+LANGUAGE SQL STABLE
+AS $$
+    SELECT
+        animal_code,
+        1 - (embedding <=> query_embedding) AS similarity,
+        image_url
+    FROM animal_embeddings
+    WHERE 1 - (embedding <=> query_embedding) > match_threshold
+    ORDER BY embedding <=> query_embedding
+    LIMIT match_count;
+$$;
 
--- ============================================================
--- REALTIME SUBSCRIPTIONS
--- ============================================================
--- Enable realtime for report status updates (ignore if already added)
-DO $$
-BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE animal_reports;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE status_history;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE disaster_zones;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
--- ============================================================
--- MOCK DISASTER DATA FOR SABAH EARTHQUAKE DEMO
--- ============================================================
-INSERT INTO disaster_zones (name, description, center_latitude, center_longitude, radius_km, is_active, severity)
-VALUES 
-    ('Sabah Earthquake Zone - Ranau', 'Earthquake affected area near Mount Kinabalu. Multiple aftershocks reported.', 5.9631, 116.6661, 50, true, 'critical'),
-    ('Sabah Earthquake Zone - Kundasang', 'Highland area with stranded animals due to landslides.', 6.0167, 116.5667, 30, true, 'high'),
-    ('Kota Kinabalu Coastal Alert', 'Coastal flooding risk. Monitor beach areas for strays.', 5.9804, 116.0735, 40, false, 'medium')
+-- ================================================================
+-- SEED DATA — Sample Malaysian SPCA/NGO locations for the map
+-- You can delete these once you have real data.
+-- ================================================================
+INSERT INTO organizations (email, name, phone, address, latitude, longitude, is_verified)
+VALUES
+    ('info@spcaselangor.org.my', 'SPCA Selangor',           '+603-4256 5312', 'Ampang, Selangor',        3.1569, 101.7649, TRUE),
+    ('paws@pawsmalaysia.org',    'PAWS Animal Welfare',      '+603-7846 1088', 'Subang Jaya, Selangor',   3.0551, 101.5904, TRUE),
+    ('info@spcapenang.org',      'SPCA Penang',              '+604-281 6559',  'Georgetown, Penang',       5.4164, 100.3327, TRUE),
+    ('rescue@pawsjohor.org',     'PAWS Johor',               '+607-333 1234',  'Johor Bahru, Johor',       1.4927, 103.7414, TRUE),
+    ('info@spcasabah.org',       'SPCA Sabah',               '+6088-268 288',  'Kota Kinabalu, Sabah',     5.9788, 116.0753, TRUE),
+    ('rescue@rawanimalcare.org', 'RAW Animal Rescue Penang', '+6011-2345 6789','Bukit Mertajam, Penang',   5.3606, 100.4575, TRUE)
 ON CONFLICT DO NOTHING;
 
--- ============================================================
--- 6. UPDATE USERS TABLE WITH CONTACT FIELDS
--- ============================================================
-ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT;
-
--- ============================================================
--- 7. UPDATE ANIMAL REPORTS FOR ADOPTION TRACKING
--- ============================================================
-ALTER TABLE animal_reports ADD COLUMN IF NOT EXISTS rescue_outcome TEXT 
-    CHECK (rescue_outcome IN ('released_to_nature', 'shelter_recovery', 'adopted', 'deceased'));
-ALTER TABLE animal_reports ADD COLUMN IF NOT EXISTS shelter_ngo_id UUID REFERENCES users(id) ON DELETE SET NULL;
-ALTER TABLE animal_reports ADD COLUMN IF NOT EXISTS is_tracking_enabled BOOLEAN DEFAULT TRUE;
-ALTER TABLE animal_reports ADD COLUMN IF NOT EXISTS adopted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
-ALTER TABLE animal_reports ADD COLUMN IF NOT EXISTS adoption_date TIMESTAMPTZ;
-
--- ============================================================
--- 8. NGO PROFILES TABLE (Verification & Contact)
--- ============================================================
-CREATE TABLE IF NOT EXISTS ngo_profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-    
-    -- Organization Info
-    organization_name TEXT NOT NULL,
-    registration_number TEXT NOT NULL,
-    license_document_url TEXT,
-    
-    -- Contact Info
-    office_address TEXT NOT NULL,
-    office_phone TEXT NOT NULL,
-    emergency_phone TEXT,
-    email TEXT NOT NULL,
-    website TEXT,
-    
-    -- Location (for map display)
-    latitude DOUBLE PRECISION,
-    longitude DOUBLE PRECISION,
-    
-    -- Verification
-    is_verified BOOLEAN DEFAULT FALSE,
-    verified_at TIMESTAMPTZ,
-    verified_by TEXT,
-    
-    -- Operating Info
-    operating_hours TEXT,
-    capacity INTEGER,
-    species_handled TEXT[],
-    
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ============================================================
--- 9. ADOPTION POSTS TABLE
--- ============================================================
-CREATE TABLE IF NOT EXISTS adoption_posts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    
-    -- Link to original report
-    report_id UUID REFERENCES animal_reports(id) ON DELETE CASCADE,
-    animal_id TEXT NOT NULL,
-    
-    -- NGO Info
-    ngo_id UUID REFERENCES ngo_profiles(id) NOT NULL,
-    ngo_name TEXT NOT NULL,
-    
-    -- Animal Details
-    name TEXT,
-    species TEXT NOT NULL,
-    breed TEXT,
-    age_estimate TEXT,
-    gender TEXT CHECK (gender IN ('male', 'female', 'unknown')),
-    size TEXT CHECK (size IN ('small', 'medium', 'large')),
-    
-    -- Health & Behavior
-    health_status TEXT,
-    temperament TEXT,
-    good_with_children BOOLEAN,
-    good_with_pets BOOLEAN,
-    is_vaccinated BOOLEAN DEFAULT FALSE,
-    is_neutered BOOLEAN DEFAULT FALSE,
-    special_needs TEXT,
-    
-    -- Media
-    photos TEXT[],
-    video_url TEXT,
-    
-    -- Adoption Info
-    adoption_fee DECIMAL(10,2),
-    requirements TEXT,
-    
-    -- Status
-    status TEXT CHECK (status IN ('available', 'pending', 'adopted', 'withdrawn')) DEFAULT 'available',
-    views_count INTEGER DEFAULT 0,
-    inquiries_count INTEGER DEFAULT 0,
-    
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ============================================================
--- 10. LOST & FOUND POSTS TABLE
--- ============================================================
-CREATE TABLE IF NOT EXISTS lost_found_posts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    
-    -- Post Type
-    post_type TEXT CHECK (post_type IN ('lost', 'found')) NOT NULL,
-    
-    -- User Info (both citizen and NGO can post)
-    user_id UUID REFERENCES users(id) NOT NULL,
-    user_name TEXT NOT NULL,
-    user_role TEXT CHECK (user_role IN ('citizen', 'ngo')) DEFAULT 'citizen',
-    contact_phone TEXT NOT NULL,
-    contact_email TEXT,
-    
-    -- Animal Info
-    species TEXT CHECK (species IN ('dog', 'cat', 'other')) NOT NULL,
-    breed TEXT,
-    color TEXT,
-    size TEXT CHECK (size IN ('small', 'medium', 'large')),
-    distinctive_features TEXT,
-    name TEXT,
-    
-    -- AI Matching
-    animal_id TEXT,
-    
-    -- Location
-    last_seen_address TEXT NOT NULL,
-    last_seen_latitude DOUBLE PRECISION,
-    last_seen_longitude DOUBLE PRECISION,
-    last_seen_date DATE,
-    
-    -- Media
-    photos TEXT[],
-    
-    -- Status
-    status TEXT CHECK (status IN ('active', 'resolved', 'expired')) DEFAULT 'active',
-    resolved_at TIMESTAMPTZ,
-    resolved_note TEXT,
-    
-    -- Reward
-    reward_offered DECIMAL(10,2),
-    
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ============================================================
--- COMMUNITY INDEXES
--- ============================================================
-CREATE INDEX IF NOT EXISTS idx_adoption_status ON adoption_posts(status);
-CREATE INDEX IF NOT EXISTS idx_adoption_species ON adoption_posts(species);
-CREATE INDEX IF NOT EXISTS idx_adoption_ngo ON adoption_posts(ngo_id);
-CREATE INDEX IF NOT EXISTS idx_lostfound_type ON lost_found_posts(post_type);
-CREATE INDEX IF NOT EXISTS idx_lostfound_status ON lost_found_posts(status);
-CREATE INDEX IF NOT EXISTS idx_lostfound_location ON lost_found_posts(last_seen_latitude, last_seen_longitude);
-CREATE INDEX IF NOT EXISTS idx_ngo_profiles_user ON ngo_profiles(user_id);
-CREATE INDEX IF NOT EXISTS idx_reports_tracking ON animal_reports(is_tracking_enabled);
-
--- ============================================================
--- COMMUNITY RLS POLICIES
--- ============================================================
-ALTER TABLE ngo_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE adoption_posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lost_found_posts ENABLE ROW LEVEL SECURITY;
-
--- Drop existing community policies first (for re-running)
-DROP POLICY IF EXISTS "Anyone can view ngo_profiles" ON ngo_profiles;
-DROP POLICY IF EXISTS "Anyone can insert ngo_profiles" ON ngo_profiles;
-DROP POLICY IF EXISTS "Anyone can update ngo_profiles" ON ngo_profiles;
-DROP POLICY IF EXISTS "Anyone can view adoption_posts" ON adoption_posts;
-DROP POLICY IF EXISTS "Anyone can insert adoption_posts" ON adoption_posts;
-DROP POLICY IF EXISTS "Anyone can update adoption_posts" ON adoption_posts;
-DROP POLICY IF EXISTS "Anyone can view lost_found_posts" ON lost_found_posts;
-DROP POLICY IF EXISTS "Anyone can insert lost_found_posts" ON lost_found_posts;
-DROP POLICY IF EXISTS "Anyone can update lost_found_posts" ON lost_found_posts;
-
-CREATE POLICY "Anyone can view ngo_profiles" ON ngo_profiles FOR SELECT USING (true);
-CREATE POLICY "Anyone can insert ngo_profiles" ON ngo_profiles FOR INSERT WITH CHECK (true);
-CREATE POLICY "Anyone can update ngo_profiles" ON ngo_profiles FOR UPDATE USING (true);
-
-CREATE POLICY "Anyone can view adoption_posts" ON adoption_posts FOR SELECT USING (true);
-CREATE POLICY "Anyone can insert adoption_posts" ON adoption_posts FOR INSERT WITH CHECK (true);
-CREATE POLICY "Anyone can update adoption_posts" ON adoption_posts FOR UPDATE USING (true);
-
-CREATE POLICY "Anyone can view lost_found_posts" ON lost_found_posts FOR SELECT USING (true);
-CREATE POLICY "Anyone can insert lost_found_posts" ON lost_found_posts FOR INSERT WITH CHECK (true);
-CREATE POLICY "Anyone can update lost_found_posts" ON lost_found_posts FOR UPDATE USING (true);
-
--- ============================================================
--- COMMUNITY REALTIME
--- ============================================================
-DO $$
-BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE adoption_posts;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE lost_found_posts;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE ngo_profiles;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
--- ============================================================
--- DONE! Your database is ready for PawGuard AI Community Features
--- ============================================================
-
+-- ================================================================
+-- DONE.
+-- Next steps:
+-- 1. Run this entire file in Supabase > SQL Editor
+-- 2. Go to Settings > API > copy Project URL and anon key
+-- 3. Add them to your .env file
+-- ================================================================

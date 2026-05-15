@@ -1,223 +1,123 @@
+/**
+ * complete-profile — shown only if org signed up without a phone number.
+ * Collects phone to satisfy profileComplete = !!(name && phone).
+ */
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+    View, Text, StyleSheet, TextInput, Pressable,
+    ScrollView, ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '../../contexts/AuthContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
-import { serifTextStyles } from '../../theme/typography';
-import { useAuth } from '../../contexts/AuthContext';
-import { FloatingCard } from '../../components/FloatingCard';
-import { CustomButton } from '../../components/CustomButton';
 
 export default function CompleteProfileScreen() {
     const router = useRouter();
     const { user, updateProfile } = useAuth();
 
-    const [name, setName] = useState(user?.name || '');
-    const [phone, setPhone] = useState(user?.phone || '');
-    const [orgName, setOrgName] = useState(user?.organizationName || '');
-    const [role, setRole] = useState(user?.role || 'citizen');
+    const [phone,   setPhone]   = useState(user?.phone ?? '');
+    const [name,    setName]    = useState(user?.name  ?? '');
+    const [loading, setLoading] = useState(false);
+    const [error,   setError]   = useState('');
 
-    const [isLoading, setIsLoading] = useState(false);
-
-    const handleCompleteProfile = async () => {
-        if (!name || !phone || (role === 'ngo' && !orgName)) {
-            // Validation (could use a Popup here)
+    const handleSave = async () => {
+        setError('');
+        if (!name || !phone) {
+            setError('Organisation name and phone are required.');
             return;
         }
-
-        setIsLoading(true);
+        setLoading(true);
         try {
-            await updateProfile({
-                name,
-                phone,
-                organizationName: role === 'ngo' ? orgName : undefined,
-                role: role as any,
-                profileComplete: true,
-            });
+            await updateProfile({ name, phone });
             router.replace('/(tabs)/home');
-        } catch (error) {
-            console.error('Failed to update profile:', error);
+        } catch (e: any) {
+            setError(e.message || 'Failed to save. Please try again.');
         } finally {
-            setIsLoading(false);
+            setLoading(false);
         }
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={styles.safe}>
             <StatusBar style="dark" />
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.keyboardView}
-            >
-                <ScrollView contentContainerStyle={styles.scrollContent}>
-                    <View style={styles.header}>
-                        <Text style={styles.title}>Complete Your Profile</Text>
-                        <Text style={styles.subtitle}>
-                            Please provide a few more details to help us coordinate rescues effectively.
-                        </Text>
+            <ScrollView contentContainerStyle={styles.scroll}>
+
+                <View style={styles.iconWrap}>
+                    <Ionicons name="shield-checkmark" size={48} color="#0891B2" />
+                </View>
+
+                <Text style={styles.title}>Complete Your Profile</Text>
+                <Text style={styles.subtitle}>
+                    We need your organisation name and phone number to activate your account.
+                </Text>
+
+                <View style={styles.form}>
+                    <View style={styles.group}>
+                        <Text style={styles.label}>Organisation Name <Text style={styles.req}>*</Text></Text>
+                        <TextInput
+                            style={styles.input}
+                            value={name}
+                            onChangeText={setName}
+                            placeholder="e.g. SPCA Selangor"
+                            placeholderTextColor={colors.minimalist.textLight}
+                        />
                     </View>
+                    <View style={styles.group}>
+                        <Text style={styles.label}>Phone Number <Text style={styles.req}>*</Text></Text>
+                        <TextInput
+                            style={styles.input}
+                            value={phone}
+                            onChangeText={setPhone}
+                            placeholder="+60 12-345 6789"
+                            placeholderTextColor={colors.minimalist.textLight}
+                            keyboardType="phone-pad"
+                        />
+                    </View>
+                </View>
 
-                    <FloatingCard shadow="medium" style={styles.formCard}>
-                        {/* Name */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Full Name</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={name}
-                                onChangeText={setName}
-                                placeholder="Enter your full name"
-                                placeholderTextColor={colors.minimalist.textLight}
-                            />
-                        </View>
+                {!!error && (
+                    <View style={styles.errorBox}>
+                        <Ionicons name="alert-circle" size={16} color="#ef4444" />
+                        <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                )}
 
-                        {/* Phone */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Phone Number</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={phone}
-                                onChangeText={setPhone}
-                                placeholder="+1 (555) 000-0000"
-                                placeholderTextColor={colors.minimalist.textLight}
-                                keyboardType="phone-pad"
-                            />
-                        </View>
+                <Pressable onPress={handleSave} disabled={loading}>
+                    <LinearGradient
+                        colors={['#0891B2', '#0E7490']}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        style={styles.btn}
+                    >
+                        {loading
+                            ? <ActivityIndicator color="#fff" />
+                            : <Text style={styles.btnText}>Save & Continue</Text>
+                        }
+                    </LinearGradient>
+                </Pressable>
 
-                        {/* Role Selection */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>I am a...</Text>
-                            <View style={styles.roleContainer}>
-                                <Pressable
-                                    style={[styles.roleOption, role === 'citizen' && styles.roleOptionSelected]}
-                                    onPress={() => setRole('citizen')}
-                                >
-                                    <Ionicons
-                                        name="person"
-                                        size={20}
-                                        color={role === 'citizen' ? colors.minimalist.white : colors.minimalist.coral}
-                                    />
-                                    <Text style={[styles.roleText, role === 'citizen' && styles.roleTextSelected]}>Citizen</Text>
-                                </Pressable>
-                                <Pressable
-                                    style={[styles.roleOption, role === 'ngo' && styles.roleOptionSelected]}
-                                    onPress={() => setRole('ngo')}
-                                >
-                                    <Ionicons
-                                        name="business"
-                                        size={20}
-                                        color={role === 'ngo' ? colors.minimalist.white : colors.minimalist.coral}
-                                    />
-                                    <Text style={[styles.roleText, role === 'ngo' && styles.roleTextSelected]}>NGO/Shelter</Text>
-                                </Pressable>
-                            </View>
-                        </View>
-
-                        {/* Organization Name (NGO only) */}
-                        {role === 'ngo' && (
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Organization Name</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={orgName}
-                                    onChangeText={setOrgName}
-                                    placeholder="Enter shelter or NGO name"
-                                    placeholderTextColor={colors.minimalist.textLight}
-                                />
-                            </View>
-                        )}
-                    </FloatingCard>
-
-                    <CustomButton
-                        title={isLoading ? "Saving..." : "Start Helping Animals"}
-                        onPress={handleCompleteProfile}
-                        disabled={isLoading}
-                        variant="primary"
-                        style={styles.button}
-                    />
-                </ScrollView>
-            </KeyboardAvoidingView>
+            </ScrollView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: colors.minimalist.bgLight,
-    },
-    keyboardView: {
-        flex: 1,
-    },
-    scrollContent: {
-        padding: spacing.xl,
-        paddingTop: spacing.xxl,
-    },
-    header: {
-        marginBottom: spacing.xxl,
-    },
-    title: {
-        ...serifTextStyles.serifHeading,
-        fontSize: 28,
-        color: colors.minimalist.textDark,
-        marginBottom: spacing.sm,
-    },
-    subtitle: {
-        fontSize: 16,
-        color: colors.minimalist.textMedium,
-        lineHeight: 24,
-    },
-    formCard: {
-        padding: spacing.xl,
-        marginBottom: spacing.xl,
-    },
-    inputGroup: {
-        marginBottom: spacing.lg,
-    },
-    label: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: colors.minimalist.textMedium,
-        marginBottom: spacing.xs,
-    },
-    input: {
-        height: 50,
-        backgroundColor: colors.minimalist.warmGray,
-        borderRadius: 12,
-        paddingHorizontal: spacing.md,
-        fontSize: 16,
-        color: colors.minimalist.textDark,
-    },
-    roleContainer: {
-        flexDirection: 'row',
-        gap: spacing.md,
-    },
-    roleOption: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.sm,
-        paddingVertical: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: colors.minimalist.coral,
-        backgroundColor: colors.minimalist.white,
-    },
-    roleOptionSelected: {
-        backgroundColor: colors.minimalist.coral,
-    },
-    roleText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: colors.minimalist.coral,
-    },
-    roleTextSelected: {
-        color: colors.minimalist.white,
-    },
-    button: {
-        marginTop: spacing.md,
-    },
+    safe:     { flex: 1, backgroundColor: '#FAFAFA' },
+    scroll:   { padding: spacing.xl, paddingBottom: 48, alignItems: 'center' },
+    iconWrap: { width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(8,145,178,0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: spacing.lg, marginTop: spacing.xl },
+    title:    { fontSize: 26, fontWeight: '700', color: colors.minimalist.textDark, textAlign: 'center', marginBottom: spacing.xs },
+    subtitle: { fontSize: 14, color: colors.minimalist.textMedium, textAlign: 'center', lineHeight: 22, marginBottom: spacing.xl },
+    form:     { width: '100%', gap: spacing.md, marginBottom: spacing.lg },
+    group:    { gap: 6 },
+    label:    { fontSize: 13, fontWeight: '600', color: colors.minimalist.textDark },
+    req:      { color: '#ef4444' },
+    input:    { borderWidth: 1.5, borderColor: colors.minimalist.borderLight, borderRadius: 10, backgroundColor: '#fff', paddingHorizontal: spacing.md, height: 48, fontSize: 15, color: colors.minimalist.textDark, width: '100%' },
+    errorBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fef2f2', borderRadius: 8, padding: spacing.md, marginBottom: spacing.md, width: '100%' },
+    errorText: { flex: 1, fontSize: 13, color: '#ef4444' },
+    btn:      { height: 52, borderRadius: 12, justifyContent: 'center', alignItems: 'center', width: 260 },
+    btnText:  { fontSize: 16, fontWeight: '700', color: '#fff' },
 });
