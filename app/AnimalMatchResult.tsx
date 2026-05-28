@@ -1,3 +1,5 @@
-// Expo Router page for Animal Match Result
-import { AnimalMatchResultScreen } from '../screens/AnimalMatchResultScreen';
-export default AnimalMatchResultScreen;
+// Animal Match Result — redirect to animals list
+import { Redirect } from 'expo-router';
+export default function AnimalMatchResult() {
+    return <Redirect href="/(tabs)/animals" />;
+}

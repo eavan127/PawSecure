@@ -1,21 +1,7 @@
-/**
- * PawSecure AI Backend Service
- * Talks to the FastAPI backend (main.py) on port 8000.
- *
- * Available endpoints:
- *   GET  /health     → confirm server is alive
- *   POST /detect     → YOLO: find animals in a full frame, get bounding boxes
- *   POST /embed      → CLIP: turn a cropped animal into a 512-number fingerprint
- *   POST /injury     → OpenCV: estimate injury severity from a cropped animal
- *   POST /pipeline   → all three above in one call (what screens should use)
- */
-
-// expo-file-system removed — using fetch fallback for web
-
 // Port changed from 5000 (Flask) to 8000 (FastAPI)
 const BACKEND_URL = (process.env.EXPO_PUBLIC_YOLO_BACKEND_URL || 'http://localhost:8000').replace(/\/$/, '');
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// Types 
 
 export interface BoundingBox {
     x: number;
@@ -60,7 +46,7 @@ export interface PipelineAnimal {
     class_name: 'dog' | 'cat';
     confidence: number;
     bbox: BoundingBox;
-    embedding: number[];        // 512 floats — save to Supabase
+    embedding?: number[];       // not returned by pipeline — generated separately via embedFromBbox
     injury: {
         has_blood: boolean;
         severity: 'none' | 'mild' | 'moderate' | 'severe';
@@ -75,12 +61,12 @@ export interface PipelineResponse {
     animals: PipelineAnimal[];
 }
 
-// ── Service Class ─────────────────────────────────────────────────────────────
+// Service Class 
 
 class YOLOBackendService {
     private backendAvailable: boolean | null = null;
 
-    // ── Health ──────────────────────────────────────────────────────────────
+    // Health 
 
     async checkHealth(): Promise<boolean> {
         try {
@@ -105,12 +91,13 @@ class YOLOBackendService {
         }
     }
 
-    // ── Image helpers ───────────────────────────────────────────────────────
+    // Image helpers 
 
     private async imageUriToBase64(imageUri: string): Promise<string> {
         // Web: use FileReader (works with blob:// and file URIs)
         const response = await fetch(imageUri);
-        const blob = await response.blob();
+        const blob = await response.blob(); 
+        // blob = binary large object
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
@@ -145,23 +132,6 @@ class YOLOBackendService {
         return response.json() as Promise<T>;
     }
 
-    // ── Public Methods ──────────────────────────────────────────────────────
-
-    /**
-     * POST /pipeline — recommended method for screens to call.
-     *
-     * Takes a full CCTV frame URI and returns every animal found with:
-     * - bounding box (where it is in the frame)
-     * - embedding (512 numbers — save this to Supabase)
-     * - injury severity (none / mild / moderate / severe)
-     *
-     * Example usage in a screen:
-     *   const result = await yoloBackendService.runPipeline(photoUri);
-     *   result.animals.forEach(animal => {
-     *     console.log(animal.class_name, animal.injury.severity);
-     *     // save animal.embedding to Supabase pgvector
-     *   });
-     */
     async runPipeline(imageUri: string): Promise<PipelineResponse> {
         await this.ensureBackendReady();
         const base64 = await this.imageUriToBase64(imageUri);
@@ -191,13 +161,54 @@ class YOLOBackendService {
      *
      * You must crop the animal first using the bbox from /detect.
      * Store the returned embedding in Supabase animal_embeddings table.
-     *
-     * To check if two animals are the same, compare embeddings with
-     * cosine similarity in Supabase pgvector (see animalService.ts).
      */
     async embedAnimal(croppedImageUri: string): Promise<EmbedResponse> {
         await this.ensureBackendReady();
         const base64 = await this.imageUriToBase64(croppedImageUri);
+        return this.post<EmbedResponse>('/embed', base64);
+    }
+
+    /**
+     * Crop animal from a full image using bbox coordinates (browser Canvas),
+     * then send the crop to /embed for CLIP embedding.
+     *
+     * Call this AFTER submit (fire and forget) so it never blocks the UI.
+     * The pipeline no longer runs CLIP — this replaces that step.
+     */
+    async embedFromBbox(imageUri: string, bbox: BoundingBox): Promise<EmbedResponse> {
+        await this.ensureBackendReady();
+
+        // Crop the animal region using the browser's Canvas API
+        const base64 = await new Promise<string>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width  = Math.round(bbox.width);
+                canvas.height = Math.round(bbox.height);
+                const ctx = canvas.getContext('2d');
+                if (!ctx) { reject(new Error('Canvas not available')); return; }
+                ctx.drawImage(
+                    img,
+                    Math.round(bbox.x), Math.round(bbox.y),
+                    Math.round(bbox.width), Math.round(bbox.height),
+                    0, 0,
+                    Math.round(bbox.width), Math.round(bbox.height),
+                );
+                // draw the crop
+                canvas.toBlob(blob => {
+                    // get raw bytes of cropped animal 
+                    if (!blob) { reject(new Error('Crop failed')); return; }
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                    reader.onerror   = reject;
+                    reader.readAsDataURL(blob);
+                }, 'image/jpeg', 0.9);
+                // 90% quality
+            };
+            img.onerror = reject;
+            img.src = imageUri;
+        });
+
         return this.post<EmbedResponse>('/embed', base64);
     }
 

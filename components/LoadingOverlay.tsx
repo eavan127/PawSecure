@@ -25,7 +25,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ visible, message
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.blackOverlay,
+        backgroundColor: theme.colors.minimalist.textDark,
         justifyContent: 'center',
         alignItems: 'center',
     },

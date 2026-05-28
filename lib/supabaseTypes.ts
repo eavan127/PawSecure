@@ -1,20 +1,12 @@
-/**
- * PawSecure — Supabase type definitions
- * Matches supabase_schema.sql exactly.
- *
- * Tables:
- *   organizations    — NGO / SPCA accounts (the only users)
- *   pending_animals  — animals detected, waiting for rescue
- *   rescued_animals  — permanent archive after rescue
- *   animal_embeddings — CLIP vectors for re-identification
- */
-
 export type Species        = 'dog' | 'cat';
 export type InjurySeverity = 'none' | 'mild' | 'moderate' | 'severe' | 'critical';
 export type AnimalStatus   = 'sighted' | 'claimed' | 'en_route';
 export type RescueOutcome  = 'in_care' | 'rehomed' | 'released' | 'deceased';
+// export make it available to other files
+// type is for simple definitions
 
-// ── organizations ─────────────────────────────────────────────────────────────
+// organizations 
+// interface is for objects with multiple fields
 
 export interface Organization {
     id:               string;
@@ -32,8 +24,10 @@ export interface Organization {
 }
 
 export type OrganizationInsert = Omit<Organization, 'id' | 'created_at' | 'updated_at'>;
+// omit to remove these fields, because they are automatically created 
+// Omit<X, Y>	Copy X but remove field Y
 
-// ── pending_animals ───────────────────────────────────────────────────────────
+// pending_animals 
 
 export interface PendingAnimal {
     id:                  string;
@@ -56,7 +50,7 @@ export interface PendingAnimal {
 
 export type PendingAnimalInsert = Omit<PendingAnimal, 'id' | 'created_at' | 'updated_at'>;
 
-// ── rescued_animals ───────────────────────────────────────────────────────────
+// rescued_animals 
 
 export interface RescuedAnimal {
     id:                   string;
@@ -83,17 +77,18 @@ export interface RescuedAnimal {
 
 export type RescuedAnimalInsert = Omit<RescuedAnimal, 'id' | 'created_at'>;
 
-// ── animal_embeddings ─────────────────────────────────────────────────────────
+// animal_embeddings 
 
 export interface AnimalEmbedding {
-    id:             string;
-    animal_code:    string;
-    species:        Species;
-    embedding:      number[];   // 512 floats from CLIP ViT-B-32
-    image_url:      string;
-    sighting_count: number;
-    first_seen_at:  string;
-    last_seen_at:   string;
+    id:          string;
+    animal_id:   string | null; // FK → pending_animals.id (SET NULL when animal is rescued)
+    animal_code: string;        // e.g. "PS-2026-JWI7RU" — persists after rescue
+    embedding:   number[];      // 512 floats from ResNet18
+    created_at:  string;
 }
 
-export type AnimalEmbeddingInsert = Omit<AnimalEmbedding, 'id'>;
+export type AnimalEmbeddingInsert = {
+    animal_id:   string;
+    animal_code: string;   // always store so embedding survives rescue
+    embedding:   number[];
+};

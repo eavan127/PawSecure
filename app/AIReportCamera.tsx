@@ -1,3 +1,5 @@
-// Expo Router page for AI Report Camera
-import { AIReportCameraScreen } from '../screens/AIReportCameraScreen';
-export default AIReportCameraScreen;
+// AI Report Camera — replaced by MakeReportScreen (Report tab)
+import { Redirect } from 'expo-router';
+export default function AIReportCamera() {
+    return <Redirect href="/(tabs)/report" />;
+}

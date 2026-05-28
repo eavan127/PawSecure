@@ -21,7 +21,16 @@ export default function TabsLayout() {
     const router = useRouter();
 
     useEffect(() => {
-        if (!isLoading && user && !user.profileComplete) {
+        if (isLoading) return; // still fetching session, wait
+
+        if (!user) {
+            // Not logged in → send to landing page
+            router.replace('/(auth)/landing');
+            return;
+        }
+
+        if (!user.profileComplete) {
+            // Logged in but profile not finished → complete it first
             router.replace('/complete-profile');
         }
     }, [user, isLoading]);

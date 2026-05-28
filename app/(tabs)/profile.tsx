@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -13,10 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { FloatingCard } from '../../components/FloatingCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
+import { getOrgProfileStats } from '../../services/animalService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -39,6 +41,18 @@ export default function ProfileScreen() {
     const { user, logout } = useAuth();
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+    // Live stats from Supabase
+    const [profileStats, setProfileStats] = useState({ reports: 0, rescued: 0, points: 0 });
+
+    useFocusEffect(
+        useCallback(() => {
+            if (!user) return;
+            getOrgProfileStats(user.id)
+                .then(setProfileStats)
+                .catch(e => console.error('[Profile] stats error:', e.message));
+        }, [user])
+    );
 
     // Animation values
     const avatarScale = useRef(new Animated.Value(0.3)).current;
@@ -138,13 +152,11 @@ export default function ProfileScreen() {
     const handleLogout = async () => {
         setIsLoggingOut(true);
         await logout();
+        // Don't navigate here — the tab layout's useEffect watches user state
+        // and will redirect to /(auth)/landing automatically when user becomes null.
+        // Navigating here too causes a double-redirect race condition.
         closeLogoutModal();
-        router.replace('/(auth)/landing');
     };
-
-    const isNGO = user?.role === 'ngo';
-    const accentColor = isNGO ? '#0891B2' : colors.minimalist.coral;
-    const avatarBg = isNGO ? '#A5E5ED' : '#FFD7D0'; // Fresh Blue for NGO, Soft Peach for Citizen
 
     const handleLogoutPress = () => {
         // Shake animation on press
@@ -169,9 +181,9 @@ export default function ProfileScreen() {
     };
 
     const stats = [
-        { label: 'Reports', value: '12' },
-        { label: 'Helped', value: '5' },
-        { label: 'Points', value: '48' },
+        { label: 'Reports', value: String(profileStats.reports) },
+        { label: 'Rescued', value: String(profileStats.rescued) },
+        { label: 'Points',  value: String(profileStats.points)  },
     ];
 
     return (
@@ -185,24 +197,8 @@ export default function ProfileScreen() {
             >
                 {/* Header */}
                 <View style={styles.header}>
-                    <Animated.View style={[
-                        styles.avatar,
-                        {
-                            opacity: avatarOpacity,
-                            transform: [{ scale: avatarScale }],
-                            backgroundColor: avatarBg,
-                            shadowColor: avatarBg,
-                        }
-                    ]}>
-                        <Text style={[styles.avatarText, !isNGO && { color: colors.minimalist.coral }]}>
-                            {getInitials(user?.name || '')}
-                        </Text>
-                    </Animated.View>
                     <Animated.Text style={[styles.name, { opacity: avatarOpacity }]}>
                         {user?.name || 'User Name'}
-                    </Animated.Text>
-                    <Animated.Text style={[styles.role, { opacity: avatarOpacity }]}>
-                        {user?.role === 'ngo' ? 'NGO / Shelter' : 'Citizen'}
                     </Animated.Text>
                 </View>
 
@@ -261,9 +257,6 @@ export default function ProfileScreen() {
                                 {({ pressed }) => (
                                     <Animated.View style={pressed && { transform: [{ scale: 0.96 }] }}>
                                         <FloatingCard shadow="soft" style={[styles.menuItem, pressed && styles.menuItemPressed]}>
-                                            <View style={[styles.menuIconContainer, { backgroundColor: isNGO ? 'rgba(165, 229, 237, 0.25)' : 'rgba(255, 180, 162, 0.15)' }]}>
-                                                <Ionicons name={item.icon} size={24} color={accentColor} />
-                                            </View>
                                             <Text style={styles.menuText}>{item.label}</Text>
                                             <Ionicons name="chevron-forward" size={20} color={colors.minimalist.textLight} />
                                         </FloatingCard>

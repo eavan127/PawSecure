@@ -81,15 +81,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return () => listener.subscription.unsubscribe();
     }, []);
 
-    const fetchProfile = async (authId: string) => {
+    // Returns true if org profile found, false if not
+    const fetchProfile = async (authId: string): Promise<boolean> => {
         const { data, error } = await supabase
             .from('organizations')
             .select('*')
             .eq('id', authId)
             .single();
 
-        if (error) console.error('[fetchProfile] error:', JSON.stringify(error));
-        if (!error && data) setUser(profileFromRow(data));
+        if (error) {
+            if (error.code !== 'PGRST116') {
+                console.error('[fetchProfile] error:', JSON.stringify(error));
+            }
+            // PGRST116 = no org row yet — normal during registration, don't sign out
+            return false;
+        }
+        if (data) setUser(profileFromRow(data));
+        return true;
     };
 
     const login = async (email: string, password: string) => {
@@ -101,7 +109,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
             if (error) throw error;
             if (!data.user) throw new Error('Login failed — no user returned.');
-            await fetchProfile(data.user.id);
+
+            const found = await fetchProfile(data.user.id);
+            if (!found) {
+                // Auth account exists but no org profile — sign out and tell user
+                await supabase.auth.signOut();
+                throw new Error('No organisation profile found for this email. Please sign up first.');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -111,19 +125,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsLoading(true);
         try {
             // 1. Create Supabase Auth account
+            console.log('[register] step 1 — signUp start');
             const { data: authData, error: authError } = await supabase.auth.signUp({
                 email: email.trim(),
                 password: password.trim(),
             });
+            console.log('[register] step 1 done — authError:', authError?.message ?? 'none', '| userId:', authData.user?.id ?? 'null');
             if (authError) throw authError;
             if (!authData.user) throw new Error('Signup failed — no user returned.');
 
             // 2. Insert org profile using the auth UUID as primary key
-            //    so we can always find it with auth.uid()
+            console.log('[register] step 2 — insert organizations start');
             const { data: org, error: insertError } = await supabase
                 .from('organizations')
                 .insert({
-                    id:              authData.user.id,   // ← links auth ↔ profile
+                    id:              authData.user.id,
                     email:           email.trim(),
                     name:            name.trim(),
                     phone:           phone.trim() || null,
@@ -134,10 +150,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 .select()
                 .single();
 
+            console.log('[register] step 2 done — insertError:', insertError?.message ?? 'none');
             if (insertError) {
-                console.error('[register] insert error:', JSON.stringify(insertError));
-                throw insertError;
+                console.error('[register] insert error full:', JSON.stringify(insertError));
+                throw new Error(insertError.message);
             }
+            console.log('[register] step 3 — setUser');
             setUser(profileFromRow(org));
         } finally {
             setIsLoading(false);

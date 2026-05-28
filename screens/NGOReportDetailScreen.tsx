@@ -17,7 +17,6 @@ import {
     Pressable,
     Image,
     TextInput,
-    Alert,
     ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,7 +26,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
-import { getPendingAnimalById, claimAnimal, confirmRescue } from '../services/animalService';
+import { getPendingAnimalById, claimAnimal, confirmRescue, uploadAnimalImage } from '../services/animalService';
 import { useAuth } from '../contexts/AuthContext';
 import type { PendingAnimal } from '../lib/supabaseTypes';
 
@@ -54,6 +53,7 @@ export const NGOReportDetailScreen: React.FC = () => {
 
     const [animal,       setAnimal]       = useState<PendingAnimal | null>(null);
     const [isLoading,    setIsLoading]    = useState(true);
+    const [loadError,    setLoadError]    = useState<string | null>(null);
     const [isClaiming,   setIsClaiming]   = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
     const [rescueImageUri, setRescueImageUri] = useState<string | null>(null);
@@ -67,31 +67,37 @@ export const NGOReportDetailScreen: React.FC = () => {
     }, [params.animalId]);
 
     const loadAnimal = async () => {
-        if (!params.animalId) {
-            Alert.alert('Error', 'No animal ID provided');
-            router.back();
-            return;
-        }
         setIsLoading(true);
+        setLoadError(null);
         try {
+            if (!params.animalId) {
+                setLoadError('No animal ID provided.');
+                return;
+            }
+            console.log('[Detail] loading animal:', params.animalId);
             const data = await getPendingAnimalById(params.animalId);
+            console.log('[Detail] result:', data ? data.animal_code : 'null');
             if (!data) {
-                Alert.alert('Not found', 'This animal may have already been rescued.');
-                router.back();
+                setLoadError('Animal not found — it may have already been rescued.');
                 return;
             }
             setAnimal(data);
         } catch (e: any) {
-            Alert.alert('Error', e.message);
+            console.error('[Detail] loadAnimal error:', e.message);
+            setLoadError(e.message ?? 'Failed to load animal details.');
         } finally {
             setIsLoading(false);
         }
     };
 
     const handleClaim = async () => {
-        if (!animal || !user) return;
+        if (!user) {
+            alert('You must be logged in to claim an animal. Please sign up or log in first.');
+            return;
+        }
+        if (!animal) return;
         if (animal.claimed_by_org_id && animal.claimed_by_org_id !== user.id) {
-            Alert.alert('Already Claimed', 'Another organisation has already claimed this animal.');
+            alert('Another organisation has already claimed this animal.');
             return;
         }
         setIsClaiming(true);
@@ -100,7 +106,7 @@ export const NGOReportDetailScreen: React.FC = () => {
             setAnimal(prev => prev ? { ...prev, status: 'claimed', claimed_by_org_id: user.id, claimed_at: new Date().toISOString() } : prev);
             setShowRescueForm(true);
         } catch (e: any) {
-            Alert.alert('Error', e.message);
+            alert('Claim failed: ' + e.message);
         } finally {
             setIsClaiming(false);
         }
@@ -121,19 +127,21 @@ export const NGOReportDetailScreen: React.FC = () => {
     const handleConfirmRescue = async () => {
         if (!animal || !user) return;
         if (!rescueImageUri) {
-            Alert.alert('Photo required', 'Please take a post-rescue photo of the animal first.');
+            alert('Please upload a post-rescue photo of the animal first.');
             return;
         }
         setIsConfirming(true);
         try {
-            await confirmRescue(animal, user.id, user.name, rescueImageUri, healthNotes || undefined);
-            Alert.alert(
-                'Rescue Confirmed!',
-                `${animal.animal_code} has been moved to the permanent rescue archive.`,
-                [{ text: 'OK', onPress: () => router.back() }]
-            );
+            // Upload rescue photo to Supabase Storage → get permanent URL
+            console.log('[Rescue] uploading rescue photo...');
+            const permanentRescueUrl = await uploadAnimalImage(rescueImageUri, 'rescued');
+            console.log('[Rescue] photo uploaded:', permanentRescueUrl);
+
+            await confirmRescue(animal, user.id, user.name, permanentRescueUrl, healthNotes || undefined);
+            alert(`✅ Rescue Confirmed!\n${animal.animal_code} has been moved to the permanent rescue archive.`);
+            router.back();
         } catch (e: any) {
-            Alert.alert('Error', e.message);
+            alert('Confirm rescue failed: ' + e.message);
         } finally {
             setIsConfirming(false);
         }
@@ -151,6 +159,22 @@ export const NGOReportDetailScreen: React.FC = () => {
                 <View style={styles.center}>
                     <ActivityIndicator size="large" color="#0891B2" />
                     <Text style={styles.loadingText}>Loading animal details...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <SafeAreaView style={styles.safe}>
+                <View style={styles.center}>
+                    <Ionicons name="alert-circle" size={48} color="#ef4444" />
+                    <Text style={[styles.loadingText, { color: '#ef4444', textAlign: 'center', marginTop: 12 }]}>
+                        {loadError}
+                    </Text>
+                    <Pressable onPress={() => router.back()} style={{ marginTop: 20, padding: 12, backgroundColor: '#0891B2', borderRadius: 10 }}>
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
+                    </Pressable>
                 </View>
             </SafeAreaView>
         );
@@ -179,8 +203,12 @@ export const NGOReportDetailScreen: React.FC = () => {
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-                {/* CCTV Image */}
+                {/* BEFORE — CCTV Image */}
                 <View style={styles.imageContainer}>
+                    <View style={styles.imageLabel}>
+                        <Ionicons name="videocam" size={12} color="#fff" />
+                        <Text style={styles.imageLabelText}>BEFORE RESCUE — CCTV Photo</Text>
+                    </View>
                     {animal.image_url ? (
                         <Image source={{ uri: animal.image_url }} style={styles.animalImage} resizeMode="cover" />
                     ) : (
@@ -290,17 +318,23 @@ export const NGOReportDetailScreen: React.FC = () => {
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>Confirm Rescue</Text>
                         <Text style={styles.rescueHint}>
-                            Take a photo of the rescued animal, then press Confirm to move it to the archive.
+                            Upload an AFTER photo of the animal once rescued. This gets saved to the permanent archive.
                         </Text>
 
-                        {/* Rescue Photo */}
+                        {/* AFTER — Rescue Photo */}
                         <Pressable onPress={pickRescuePhoto} style={styles.photoBox}>
                             {rescueImageUri ? (
-                                <Image source={{ uri: rescueImageUri }} style={styles.rescuePhoto} resizeMode="cover" />
+                                <>
+                                    <View style={[styles.imageLabel, { backgroundColor: '#059669' }]}>
+                                        <Ionicons name="checkmark-circle" size={12} color="#fff" />
+                                        <Text style={styles.imageLabelText}>AFTER RESCUE — Your Photo</Text>
+                                    </View>
+                                    <Image source={{ uri: rescueImageUri }} style={styles.rescuePhoto} resizeMode="cover" />
+                                </>
                             ) : (
                                 <View style={styles.photoPlaceholder}>
                                     <Ionicons name="camera" size={32} color="#9CA3AF" />
-                                    <Text style={styles.photoPlaceholderText}>Tap to take rescue photo</Text>
+                                    <Text style={styles.photoPlaceholderText}>📷 Upload AFTER rescue photo</Text>
                                 </View>
                             )}
                         </Pressable>
@@ -353,6 +387,8 @@ const styles = StyleSheet.create({
     codeText:     { fontSize: 11, fontWeight: '700', color: '#0891B2' },
     scroll:       { padding: spacing.lg },
     imageContainer: { position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: spacing.md },
+    imageLabel:   { position: 'absolute', top: 10, left: 10, zIndex: 10, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+    imageLabelText: { fontSize: 10, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
     animalImage:  { width: '100%', height: 240 },
     noImage:      { backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
     noImageText:  { marginTop: 8, color: '#9CA3AF', fontSize: 14 },
