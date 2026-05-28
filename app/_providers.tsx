@@ -27,3 +27,6 @@ export const Providers = ({ children }: ProvidersProps) => {
         </SafeAreaProvider>
     );
 };
+
+// Expo Router requires a default export from every file in app/
+export default Providers;

@@ -142,10 +142,6 @@ export default function ProfileScreen() {
         router.replace('/(auth)/landing');
     };
 
-    const isNGO = user?.role === 'ngo';
-    const accentColor = isNGO ? '#0891B2' : colors.minimalist.coral;
-    const avatarBg = isNGO ? '#A5E5ED' : '#FFD7D0'; // Fresh Blue for NGO, Soft Peach for Citizen
-
     const handleLogoutPress = () => {
         // Shake animation on press
         Animated.sequence([
@@ -185,24 +181,8 @@ export default function ProfileScreen() {
             >
                 {/* Header */}
                 <View style={styles.header}>
-                    <Animated.View style={[
-                        styles.avatar,
-                        {
-                            opacity: avatarOpacity,
-                            transform: [{ scale: avatarScale }],
-                            backgroundColor: avatarBg,
-                            shadowColor: avatarBg,
-                        }
-                    ]}>
-                        <Text style={[styles.avatarText, !isNGO && { color: colors.minimalist.coral }]}>
-                            {getInitials(user?.name || '')}
-                        </Text>
-                    </Animated.View>
                     <Animated.Text style={[styles.name, { opacity: avatarOpacity }]}>
                         {user?.name || 'User Name'}
-                    </Animated.Text>
-                    <Animated.Text style={[styles.role, { opacity: avatarOpacity }]}>
-                        {user?.role === 'ngo' ? 'NGO / Shelter' : 'Citizen'}
                     </Animated.Text>
                 </View>
 
@@ -261,9 +241,6 @@ export default function ProfileScreen() {
                                 {({ pressed }) => (
                                     <Animated.View style={pressed && { transform: [{ scale: 0.96 }] }}>
                                         <FloatingCard shadow="soft" style={[styles.menuItem, pressed && styles.menuItemPressed]}>
-                                            <View style={[styles.menuIconContainer, { backgroundColor: isNGO ? 'rgba(165, 229, 237, 0.25)' : 'rgba(255, 180, 162, 0.15)' }]}>
-                                                <Ionicons name={item.icon} size={24} color={accentColor} />
-                                            </View>
                                             <Text style={styles.menuText}>{item.label}</Text>
                                             <Ionicons name="chevron-forward" size={20} color={colors.minimalist.textLight} />
                                         </FloatingCard>

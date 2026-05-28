@@ -37,9 +37,8 @@ interface SettingSection {
 export default function AppSettingsScreen() {
     const router = useRouter();
     const { user } = useAuth();
-    const isNGO = user?.role === 'ngo';
-    const accentColor = isNGO ? '#0891B2' : colors.minimalist.coral;
-    const trackColorTrue = isNGO ? '#A5E5ED' : colors.minimalist.peachLight;
+    const accentColor = '#0891B2';
+    const trackColorTrue = '#A5E5ED';
     const fadeAnim = useState(new Animated.Value(0))[0];
 
     const [sections, setSections] = useState<SettingSection[]>([

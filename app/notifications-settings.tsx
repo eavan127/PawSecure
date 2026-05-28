@@ -28,10 +28,9 @@ interface NotificationSetting {
 export default function NotificationsSettingsScreen() {
     const router = useRouter();
     const { user } = useAuth();
-    const isNGO = user?.role === 'ngo';
-    const accentColor = isNGO ? '#0891B2' : colors.minimalist.coral;
-    const accentBg = isNGO ? 'rgba(165, 229, 237, 0.2)' : 'rgba(255, 180, 162, 0.15)';
-    const trackColorTrue = isNGO ? '#A5E5ED' : colors.minimalist.peachLight;
+    const accentColor = '#0891B2';
+    const accentBg = 'rgba(165, 229, 237, 0.2)';
+    const trackColorTrue = '#A5E5ED';
 
     const [settings, setSettings] = useState<NotificationSetting[]>([
         {
@@ -127,7 +126,7 @@ export default function NotificationsSettingsScreen() {
                         pressed && styles.settingItemPressed
                     ]}
                 >
-                    <View style={[styles.iconContainer, setting.enabled && { backgroundColor: isNGO ? 'rgba(165, 229, 237, 0.25)' : 'rgba(255, 180, 162, 0.15)' }]}>
+                    <View style={[styles.iconContainer, setting.enabled && { backgroundColor: 'rgba(165, 229, 237, 0.25)' }]}>
                         <Ionicons
                             name={setting.icon}
                             size={22}

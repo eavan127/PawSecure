@@ -180,9 +180,16 @@ export default function MakeReportScreen() {
         setGettingLoc(true);
         try {
             const loc = await getCurrentLocation();
-            setLatitude(loc.latitude);
-            setLongitude(loc.longitude);
-            setAddress(loc.address ?? `${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)}`);
+            if (!loc.success || !loc.coordinates) {
+                Alert.alert('Location unavailable', loc.error ?? 'Enter the address manually.');
+                return;
+            }
+            setLatitude(loc.coordinates.latitude);
+            setLongitude(loc.coordinates.longitude);
+            setAddress(
+                loc.address ??
+                `${loc.coordinates.latitude.toFixed(4)}, ${loc.coordinates.longitude.toFixed(4)}`
+            );
         } catch {
             Alert.alert('Location unavailable', 'Enter the address manually.');
         } finally {

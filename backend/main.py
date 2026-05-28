@@ -155,7 +155,7 @@ def detect_injury_signals(pil_image: Image.Image) -> dict:
     red_pixel_ratio = np.sum(red_mask > 0) / total_pixels
 
     signals = []
-    has_blood = red_pixel_ratio > 0.01     # more than 1% red pixels
+    has_blood = bool(red_pixel_ratio > 0.01)     # more than 1% red pixels — cast to Python bool (not numpy.bool_)
 
     if has_blood:
         signals.append("red_region_detected")

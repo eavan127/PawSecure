@@ -88,8 +88,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             .eq('id', authId)
             .single();
 
-        if (error) console.error('[fetchProfile] error:', JSON.stringify(error));
-        if (!error && data) setUser(profileFromRow(data));
+        if (error) {
+            console.error('[fetchProfile] error:', JSON.stringify(error));
+            // PGRST116 = 0 rows found — auth account exists but no org profile
+            // Sign out so the user can register fresh instead of looping
+            if (error.code === 'PGRST116') {
+                console.warn('[fetchProfile] No org profile found — signing out');
+                await supabase.auth.signOut();
+            }
+            return;
+        }
+        if (data) setUser(profileFromRow(data));
     };
 
     const login = async (email: string, password: string) => {

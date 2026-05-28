@@ -47,14 +47,13 @@ export default function EditProfileScreen() {
         ]).start();
     }, []);
 
+    const accentColor = '#0891B2';
+    const avatarBg = '#A5E5ED';
+
     const getInitials = (name: string) => {
         if (!name) return 'U';
         return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
     };
-
-    const isNGO = user?.role === 'ngo';
-    const accentColor = isNGO ? '#0891B2' : colors.minimalist.coral;
-    const avatarBg = isNGO ? '#A5E5ED' : '#FFD7D0';
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -97,9 +96,6 @@ export default function EditProfileScreen() {
                     {/* Avatar Section */}
                     <View style={styles.avatarSection}>
                         <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
-                            <Text style={[styles.avatarText, !isNGO && { color: colors.minimalist.coral }]}>
-                                {getInitials(name)}
-                            </Text>
                         </View>
                         <Pressable style={styles.changePhotoButton}>
                             <Ionicons name="camera-outline" size={18} color={accentColor} />
