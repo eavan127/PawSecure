@@ -89,7 +89,11 @@ export const NGOReportDetailScreen: React.FC = () => {
     };
 
     const handleClaim = async () => {
-        if (!animal || !user) return;
+        if (!user) {
+            alert('You must be logged in to claim an animal. Please sign up or log in first.');
+            return;
+        }
+        if (!animal) return;
         if (animal.claimed_by_org_id && animal.claimed_by_org_id !== user.id) {
             Alert.alert('Already Claimed', 'Another organisation has already claimed this animal.');
             return;
@@ -179,8 +183,12 @@ export const NGOReportDetailScreen: React.FC = () => {
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-                {/* CCTV Image */}
+                {/* BEFORE — CCTV Image */}
                 <View style={styles.imageContainer}>
+                    <View style={styles.imageLabel}>
+                        <Ionicons name="videocam" size={12} color="#fff" />
+                        <Text style={styles.imageLabelText}>BEFORE RESCUE — CCTV Photo</Text>
+                    </View>
                     {animal.image_url ? (
                         <Image source={{ uri: animal.image_url }} style={styles.animalImage} resizeMode="cover" />
                     ) : (
@@ -290,17 +298,23 @@ export const NGOReportDetailScreen: React.FC = () => {
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>Confirm Rescue</Text>
                         <Text style={styles.rescueHint}>
-                            Take a photo of the rescued animal, then press Confirm to move it to the archive.
+                            Upload an AFTER photo of the animal once rescued. This gets saved to the permanent archive.
                         </Text>
 
-                        {/* Rescue Photo */}
+                        {/* AFTER — Rescue Photo */}
                         <Pressable onPress={pickRescuePhoto} style={styles.photoBox}>
                             {rescueImageUri ? (
-                                <Image source={{ uri: rescueImageUri }} style={styles.rescuePhoto} resizeMode="cover" />
+                                <>
+                                    <View style={[styles.imageLabel, { backgroundColor: '#059669' }]}>
+                                        <Ionicons name="checkmark-circle" size={12} color="#fff" />
+                                        <Text style={styles.imageLabelText}>AFTER RESCUE — Your Photo</Text>
+                                    </View>
+                                    <Image source={{ uri: rescueImageUri }} style={styles.rescuePhoto} resizeMode="cover" />
+                                </>
                             ) : (
                                 <View style={styles.photoPlaceholder}>
                                     <Ionicons name="camera" size={32} color="#9CA3AF" />
-                                    <Text style={styles.photoPlaceholderText}>Tap to take rescue photo</Text>
+                                    <Text style={styles.photoPlaceholderText}>📷 Upload AFTER rescue photo</Text>
                                 </View>
                             )}
                         </Pressable>
@@ -353,6 +367,8 @@ const styles = StyleSheet.create({
     codeText:     { fontSize: 11, fontWeight: '700', color: '#0891B2' },
     scroll:       { padding: spacing.lg },
     imageContainer: { position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: spacing.md },
+    imageLabel:   { position: 'absolute', top: 10, left: 10, zIndex: 10, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+    imageLabelText: { fontSize: 10, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
     animalImage:  { width: '100%', height: 240 },
     noImage:      { backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
     noImageText:  { marginTop: 8, color: '#9CA3AF', fontSize: 14 },

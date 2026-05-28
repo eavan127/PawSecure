@@ -25,7 +25,7 @@ import { useRouter } from 'expo-router';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { yoloBackendService } from '../services/yoloBackendService';
-import { addPendingAnimal } from '../services/animalService';
+import { addPendingAnimal, saveEmbedding } from '../services/animalService';
 import { getCurrentLocation } from '../services/locationService';
 import { useAuth } from '../contexts/AuthContext';
 import type { PipelineAnimal } from '../services/yoloBackendService';
@@ -200,46 +200,58 @@ export default function MakeReportScreen() {
     // ── Submit ───────────────────────────────────────────────────────────────
 
     const handleSubmit = async () => {
+        // Guard: prevent double-submit while already in progress
+        if (submitting) return;
+
         if (!imageUri) {
-            Alert.alert('No image', 'Please upload a CCTV image or video frame first.');
+            alert('No image — please upload a CCTV image or video frame first.');
             return;
         }
         if (!latitude || !longitude) {
-            Alert.alert('No location', 'Please detect your location or enter coordinates.');
+            alert('No location — please detect your location or enter coordinates.');
             return;
         }
 
         const selected = aiAnimals[selectedIdx];
-        const species: Species       = (selected?.class_name as Species) ?? 'dog';
+        const species: Species         = (selected?.class_name as Species) ?? 'dog';
         const severity: InjurySeverity = (selected?.injury?.severity as InjurySeverity) ?? 'none';
-        const signals                = selected?.injury?.signals ?? [];
-        const confidence             = selected?.confidence ?? null;
+        const signals                  = selected?.injury?.signals ?? [];
+        const confidence               = selected?.confidence ?? null;
 
         setSubmitting(true);
         try {
-            await addPendingAnimal({
-                animal_code:       generateAnimalCode(),
+            const newAnimal = await addPendingAnimal({
+                animal_code:         generateAnimalCode(),
                 species,
-                injury_severity:   severity,
-                injury_signals:    signals.length > 0 ? signals : null,
-                ai_confidence:     confidence,
-                image_url:         imageUri,
-                address:           address || null,
+                injury_severity:     severity,
+                injury_signals:      signals.length > 0 ? signals : null,
+                ai_confidence:       confidence,
+                image_url:           imageUri,
+                address:             address || null,
                 latitude,
                 longitude,
-                spotted_at:        new Date().toISOString(),
-                claimed_by_org_id: null,
-                claimed_at:        null,
-                status:            'sighted',
+                spotted_at:          new Date().toISOString(),
+                claimed_by_org_id:   null,
+                claimed_at:          null,
+                status:              'sighted',
+                reported_by_org_id:  user?.id ?? null,
             });
 
-            Alert.alert(
-                'Submitted!',
-                'Animal added to the rescue queue. NGOs can now see it on the map.',
-                [{ text: 'OK', onPress: () => router.back() }]
-            );
+            // Generate CLIP embedding in background — crop image using bbox, send to /embed
+            // This runs AFTER the animal is saved so it never blocks the submit flow
+            if (selected && imageUri && newAnimal?.id) {
+                yoloBackendService.embedFromBbox(imageUri, selected.bbox)
+                    .then(result => saveEmbedding({ animal_id: newAnimal.id, embedding: result.embedding }))
+                    .then(() => console.log('[PawSecure] Embedding saved for', newAnimal.id))
+                    .catch(e => console.error('[PawSecure] Embedding save failed:', e.message));
+            }
+
+            alert('✅ Animal submitted! It is now visible on the map and rescue queue.');
+            router.replace('/(tabs)/animals');
         } catch (e: any) {
-            Alert.alert('Error', e.message);
+            // Use browser alert so it always shows on web
+            alert('❌ Submit failed: ' + (e.message ?? 'Unknown error. Check console for details.'));
+            console.error('[PawSecure] handleSubmit error:', e);
         } finally {
             setSubmitting(false);
         }

@@ -82,6 +82,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, []);
 
     const fetchProfile = async (authId: string) => {
+        console.log('[fetchProfile] fetching for', authId);
         const { data, error } = await supabase
             .from('organizations')
             .select('*')
@@ -90,29 +91,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (error) {
             console.error('[fetchProfile] error:', JSON.stringify(error));
-            // PGRST116 = 0 rows found — auth account exists but no org profile
-            // Sign out so the user can register fresh instead of looping
             if (error.code === 'PGRST116') {
                 console.warn('[fetchProfile] No org profile found — signing out');
                 await supabase.auth.signOut();
             }
             return;
         }
+        console.log('[fetchProfile] success, name:', data?.name);
         if (data) setUser(profileFromRow(data));
     };
 
     const login = async (email: string, password: string) => {
         setIsLoading(true);
         try {
+            console.log('[login] signInWithPassword start');
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
                 password: password.trim(),
             });
+            console.log('[login] signInWithPassword done, error:', error?.message ?? 'none');
             if (error) throw error;
             if (!data.user) throw new Error('Login failed — no user returned.');
+            console.log('[login] fetchProfile start');
             await fetchProfile(data.user.id);
+            console.log('[login] fetchProfile done');
         } finally {
             setIsLoading(false);
+            console.log('[login] isLoading set to false');
         }
     };
 

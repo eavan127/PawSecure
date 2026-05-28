@@ -6,21 +6,23 @@ Run with:  uvicorn main:app --reload --host 0.0.0.0 --port 8000
 Docs at:   http://localhost:8000/docs  (FastAPI gives this FREE)
 """
 
-# ── Imports ───────────────────────────────────────────────────────────────────
+# Imports 
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel          # enforces the shape of incoming JSON
 from ultralytics import YOLO
-import open_clip                        # OpenCLIP for animal re-identification
 import torch
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image 
+# pillow, python imaging library, convert image into PIL as input for yolo & Resnet
 import base64
 import io
+import torchvision.models as models
+import torchvision.transforms as transforms
 
-# ── App Setup ─────────────────────────────────────────────────────────────────
+# App Setup 
 
 app = FastAPI(
     title="PawSecure AI Backend",
@@ -36,34 +38,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Load Models (runs ONCE when server starts) ────────────────────────────────
+# Load Models (runs when server starts) 
 
 print("Loading YOLO model...")
 try:
-    yolo = YOLO("yolo11n.pt")   # downloads ~6MB on first run
+    yolo = YOLO("yolo11n.pt")   # yolo newest model
     print("YOLO yolo11n loaded.")
 except Exception:
-    yolo = YOLO("yolov8n.pt")   # fallback
+    yolo = YOLO("yolov8n.pt")   # fallback to old version
     print("YOLO yolov8n loaded (fallback).")
 
-print("Loading CLIP model...")
-# ViT-B-32 is the lightweight version — good balance of speed vs accuracy
-# 'openai' means we use OpenAI's pretrained weights (free to download)
-clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(
-    "ViT-B-32", pretrained="openai"
-)
-clip_model.eval()   # eval mode = no gradient tracking = faster inference
-print("CLIP ViT-B-32 loaded.")
+print("Loading ResNet18 embedding model...")
+embed_model = models.resnet18(weights='IMAGENET1K_V1')
+# load the pretrained model
+# Layer 1-3:   detects edges, corners, colours
+# Layer 4-8:   detects textures (fur, scales, feathers)
+# Layer 9-15:  detects parts (eyes, ears, legs)
+# Layer 16-18: detects whole objects (this is a dog)
+embed_model.fc = torch.nn.Identity()   # remove classification head = 512-dim output
+embed_model.eval() 
+# switch the model into evaluation mode
 
-# COCO dataset class IDs for animals YOLO knows
+embed_preprocess = transforms.Compose([
+    transforms.Resize(256),
+    # transform into 256 x 256 fixed size
+    transforms.CenterCrop(224),
+    # crop out the center
+    transforms.ToTensor(),
+    # convert PIL image into tensor
+    # reshapes and rescales (format like 0 - 255 to 0.0-1.0)
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+                        #  shifts every image to have the same center
+                        # normalize the brightness for red, green and blue
+])
+print("ResNet18 loaded.")
+
+# COCO dataset class IDs  (yolo was trained based on COCO dataset)
+# has 80 object categories, we take 15 and 16 only 
 CAT_CLASS_ID = 15
 DOG_CLASS_ID = 16
 
-# ── Pydantic Schemas ──────────────────────────────────────────────────────────
-#
+#  Pydantic Schemas 
 # These are like TypeScript interfaces but for Python.
 # FastAPI validates incoming JSON against these automatically.
-# Wrong data from the client → 422 error, no extra code needed.
+# Wrong data from the client will lead to 422 error, no extra code needed.
 
 class ImageRequest(BaseModel):
     image: str          # base64-encoded image string
@@ -71,28 +90,29 @@ class ImageRequest(BaseModel):
 class BoundingBox(BaseModel):
     x: float
     y: float
+    # x, y top left corner of the box, the coordinate
     width: float
     height: float
 
 class Detection(BaseModel):
-    class_id: int
+    class_id: int  # 15 or 16 
     class_name: str     # "dog" or "cat"
-    confidence: float
-    bbox: BoundingBox
+    confidence: float # 0.0 to 1.0
+    bbox: BoundingBox  # { "x": 120, "y": 80, "width": 200, "height": 180 }
 
 class DetectResponse(BaseModel):
     success: bool
-    detections: list[Detection]
+    detections: list[Detection] # a list of detection objects
     dog_detected: bool
     cat_detected: bool
-    primary_detection: Detection | None     # highest-confidence detection
+    primary_detection: Detection | None     # highest-confidence detection # no animal found = NULL
 
 class EmbedRequest(BaseModel):
     image: str          # base64 of the CROPPED animal (not the full frame)
 
 class EmbedResponse(BaseModel):
     success: bool
-    embedding: list[float]      # 512 numbers — the animal's "fingerprint"
+    embedding: list[float]      # 512 numbers 
     embedding_dim: int          # always 512 for ViT-B-32
 
 class InjuryResponse(BaseModel):
@@ -101,7 +121,7 @@ class InjuryResponse(BaseModel):
     severity: str       # "none" | "mild" | "moderate" | "severe"
     signals: list[str]  # e.g. ["red_region_detected", "abnormal_aspect_ratio"]
 
-# ── Helper Functions ──────────────────────────────────────────────────────────
+#  Helper Functions 
 
 def decode_base64_image(b64_string: str) -> Image.Image:
     """
@@ -122,6 +142,8 @@ def pil_to_cv2(pil_image: Image.Image) -> np.ndarray:
     """
     rgb_array = np.array(pil_image)
     bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+    #  cvt = convert color order
+    #  PIL = R G B OPEN CV = B G R
     return bgr_array
 
 
@@ -140,19 +162,30 @@ def detect_injury_signals(pil_image: Image.Image) -> dict:
     """
     cv_image = pil_to_cv2(pil_image)
     hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+    #  convert to hsv heu (the actual colour),saturation (how vivid the colour is),  value (hor bright or dark it is)
 
     # Red in HSV wraps around 0 and 180, so we need two ranges
     lower_red1 = np.array([0,   70,  50])
     upper_red1 = np.array([10, 255, 255])
+    # H between 0  and 10  → must be in the red zone of the wheel
+    # S between 70 and 255 → must be vivid enough (not pale/grey)
+    # V between 50 and 255 → must be bright enough (not black/dark)
+    # all must fulfill to determine it is red enough
+
     lower_red2 = np.array([160, 70,  50])
     upper_red2 = np.array([180, 255, 255])
 
     mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
     mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+    # only allow the range between to be the mask 
     red_mask = cv2.bitwise_or(mask1, mask2)
+    # has either one mask result to 255 
 
     total_pixels = cv_image.shape[0] * cv_image.shape[1]
+    #  shape 0 = height , shape 1 = weidth
     red_pixel_ratio = np.sum(red_mask > 0) / total_pixels
+    #  if got is 255 then maning > 0, if no then is 0 then also false
+    # total up the 255's no of pixels 
 
     signals = []
     has_blood = bool(red_pixel_ratio > 0.01)     # more than 1% red pixels — cast to Python bool (not numpy.bool_)
@@ -161,21 +194,30 @@ def detect_injury_signals(pil_image: Image.Image) -> dict:
         signals.append("red_region_detected")
 
     h, w = cv_image.shape[:2]
+    # ignore the third which is the colour channel
     aspect_ratio = w / h if h > 0 else 1.0
     if aspect_ratio > 2.5:
+        # check if the ratio wide or not, if 400 wide 100 tall then 400/100 = 4.0 meaning very wide
         signals.append("abnormal_aspect_ratio_collapsed")
     elif aspect_ratio < 0.4:
         signals.append("abnormal_aspect_ratio_limping")
+        # if 100 width / 400 tall = 0.25 meaning very tall 
 
     # Severity derived from combination of signals
-    if not signals:
+    if not signals: 
+        # meaning if signals is empty
         severity = "none"
     elif has_blood and len(signals) >= 2:
         severity = "severe"
+        # either too wide or too tall
+        #  with red 
     elif has_blood:
         severity = "moderate"
+        # only red region detected
     else:
         severity = "mild"
+        # abnormal ratio collapsed/limping
+        # no blood, only length > 2
 
     return {
         "has_blood": has_blood,
@@ -183,7 +225,7 @@ def detect_injury_signals(pil_image: Image.Image) -> dict:
         "signals": signals,
     }
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+#  Endpoints 
 
 @app.get("/health")
 async def health():
@@ -205,7 +247,9 @@ async def detect(body: ImageRequest):
     """
     try:
         image = decode_base64_image(body.image)
+        # convert base62string to PIL image
         results = yolo(image, conf=0.5)
+        # confidence threshold 
 
         detections: list[Detection] = []
         dog_detected = False
@@ -214,10 +258,13 @@ async def detect(body: ImageRequest):
         for result in results:
             for box in result.boxes:
                 class_id = int(box.cls[0])
+                # fr , 0=person, 16=dog
                 if class_id not in [CAT_CLASS_ID, DOG_CLASS_ID]:
                     continue
 
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
+                # returns bounding box as two corner points 
+                # top-left and bottom-right
                 confidence = float(box.conf[0])
                 class_name = "dog" if class_id == DOG_CLASS_ID else "cat"
 
@@ -234,6 +281,7 @@ async def detect(body: ImageRequest):
                     cat_detected = True
 
         detections.sort(key=lambda d: d.confidence, reverse=True)
+        # sort descendingly
         primary = detections[0] if detections else None
 
         return DetectResponse(
@@ -261,26 +309,22 @@ async def embed(body: ImageRequest):
     similarity between their embeddings:
       - Score > 0.85  →  very likely the same animal
       - Score < 0.60  →  different animals
-
-    WHY CLIP?
-    CLIP was trained on 400 million image-text pairs and learned rich
-    visual features (fur patterns, body shape, eye structure). These
-    generalise well to animal re-identification even without task-specific
-    training.
     """
     try:
         image = decode_base64_image(body.image)
+        
+        tensor = embed_preprocess(image).unsqueeze(0)
+        # add a batch dimension at position 0
+        # bc net can process many images at once 
+        # [1, 3, 224, 224]
 
-        # clip_preprocess: resize to 224×224, normalise pixel values
-        # unsqueeze(0): adds batch dimension → shape [1, 3, 224, 224]
-        tensor = clip_preprocess(image).unsqueeze(0)
+        with torch.no_grad():
+            features = embed_model(tensor)                          # shape: [1, 512]
+            # run the image through all 18 layers
+            features = features / features.norm(dim=-1, keepdim=True)  
+            # L2 normalise
 
-        with torch.no_grad():   # no gradients needed — we are not training
-            features = clip_model.encode_image(tensor)  # shape: [1, 512]
-            # L2 normalise so cosine similarity == dot product (faster in Supabase)
-            features = features / features.norm(dim=-1, keepdim=True)
-
-        embedding = features[0].tolist()    # tensor → plain Python list of 512 floats
+        embedding = features[0].tolist()
 
         return EmbedResponse(
             success=True,
@@ -325,17 +369,13 @@ async def injury(body: ImageRequest):
 @app.post("/pipeline")
 async def full_pipeline(body: ImageRequest):
     """
-    Convenience endpoint: detect + embed + injury in ONE call.
-
-    The mobile app calls this single endpoint when processing a CCTV frame.
-    It returns everything needed to create an animal record in Supabase.
+    Fast pipeline: YOLO detection + injury analysis only.
 
     Internal flow:
       1. YOLO scans the full frame for animals
       2. For each animal found, crop the bounding box region
-      3. CLIP generates a 512-dim embedding from the crop
-      4. Injury analysis runs on the same crop
-      5. All results are returned together
+      3. Injury analysis runs on the crop (fast, rule-based)
+      4. Results returned immediately 
     """
     try:
         image = decode_base64_image(body.image)
@@ -354,27 +394,27 @@ async def full_pipeline(body: ImageRequest):
                 confidence = float(box.conf[0])
                 class_name = "dog" if class_id == DOG_CLASS_ID else "cat"
 
-                # Crop the detected animal from the full frame
                 crop = img_array[y1:y2, x1:x2]
                 if crop.size == 0:
                     continue
                 crop_pil = Image.fromarray(crop)
 
-                # CLIP embedding
-                tensor = clip_preprocess(crop_pil).unsqueeze(0)
-                with torch.no_grad():
-                    features = clip_model.encode_image(tensor)
-                    features = features / features.norm(dim=-1, keepdim=True)
-                embedding = features[0].tolist()
-
-                # Injury signals
-                injury_data = detect_injury_signals(crop_pil)
+                raw_injury = detect_injury_signals(crop_pil)
+                injury_data = {
+                    "has_blood": bool(raw_injury["has_blood"]),
+                    "severity":  str(raw_injury["severity"]),
+                    "signals":   [str(s) for s in raw_injury["signals"]],
+                }
 
                 pipeline_results.append({
-                    "class_name": class_name,
-                    "confidence": confidence,
-                    "bbox": {"x": x1, "y": y1, "width": x2 - x1, "height": y2 - y1},
-                    "embedding": embedding,
+                    "class_name": str(class_name),
+                    "confidence": float(confidence),
+                    "bbox": {
+                        "x":      int(x1),
+                        "y":      int(y1),
+                        "width":  int(x2 - x1),
+                        "height": int(y2 - y1),
+                    },
                     "injury": injury_data,
                 })
 

@@ -1,10 +1,3 @@
-/**
- * PawSecure — Animal Service
- *
- * All database operations for animals.
- * Screens never call Supabase directly — they call this file.
- */
-
 import { supabase } from '../lib/supabase';
 import type {
     PendingAnimal,
@@ -14,7 +7,7 @@ import type {
     AnimalEmbeddingInsert,
 } from '../lib/supabaseTypes';
 
-// ── Pending Animals ───────────────────────────────────────────────────────────
+//  Pending Animals 
 
 export async function getPendingAnimals(): Promise<PendingAnimal[]> {
     const { data, error } = await supabase
@@ -83,7 +76,7 @@ export async function claimAnimal(animalId: string, orgId: string): Promise<void
     if (error) throw new Error(error.message);
 }
 
-// ── Rescue Confirmation ───────────────────────────────────────────────────────
+// Rescue Confirmation 
 
 /**
  * NGO has rescued the animal and taken a post-rescue photo.
@@ -136,7 +129,7 @@ export async function confirmRescue(
     return data;
 }
 
-// ── Rescued Archive ───────────────────────────────────────────────────────────
+// Rescued Archive 
 
 export async function getRescuedAnimals(orgId: string): Promise<RescuedAnimal[]> {
     const { data, error } = await supabase
@@ -168,7 +161,7 @@ export async function getRescueStats(orgId: string) {
     };
 }
 
-// ── CLIP Embeddings ───────────────────────────────────────────────────────────
+// CLIP Embeddings 
 
 export async function saveEmbedding(embedding: AnimalEmbeddingInsert): Promise<void> {
     const { error } = await supabase

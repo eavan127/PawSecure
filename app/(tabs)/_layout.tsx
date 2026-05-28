@@ -24,8 +24,8 @@ export default function TabsLayout() {
         if (isLoading) return; // still fetching session, wait
 
         if (!user) {
-            // Not logged in → send to login
-            router.replace('/(auth)/login');
+            // Not logged in → send to landing page
+            router.replace('/(auth)/landing');
             return;
         }
 
