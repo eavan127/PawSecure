@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -13,10 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { FloatingCard } from '../../components/FloatingCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
+import { getOrgProfileStats } from '../../services/animalService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -39,6 +41,18 @@ export default function ProfileScreen() {
     const { user, logout } = useAuth();
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+    // Live stats from Supabase
+    const [profileStats, setProfileStats] = useState({ reports: 0, rescued: 0, points: 0 });
+
+    useFocusEffect(
+        useCallback(() => {
+            if (!user) return;
+            getOrgProfileStats(user.id)
+                .then(setProfileStats)
+                .catch(e => console.error('[Profile] stats error:', e.message));
+        }, [user])
+    );
 
     // Animation values
     const avatarScale = useRef(new Animated.Value(0.3)).current;
@@ -167,9 +181,9 @@ export default function ProfileScreen() {
     };
 
     const stats = [
-        { label: 'Reports', value: '12' },
-        { label: 'Helped', value: '5' },
-        { label: 'Points', value: '48' },
+        { label: 'Reports', value: String(profileStats.reports) },
+        { label: 'Rescued', value: String(profileStats.rescued) },
+        { label: 'Points',  value: String(profileStats.points)  },
     ];
 
     return (

@@ -25,7 +25,7 @@ import { useRouter } from 'expo-router';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { yoloBackendService } from '../services/yoloBackendService';
-import { addPendingAnimal, saveEmbedding } from '../services/animalService';
+import { addPendingAnimal, saveEmbedding, uploadAnimalImage } from '../services/animalService';
 import { getCurrentLocation } from '../services/locationService';
 import { useAuth } from '../contexts/AuthContext';
 import type { PipelineAnimal } from '../services/yoloBackendService';
@@ -220,13 +220,18 @@ export default function MakeReportScreen() {
 
         setSubmitting(true);
         try {
+            // Upload image to Supabase Storage → get permanent URL
+            console.log('[Submit] uploading image...');
+            const permanentImageUrl = await uploadAnimalImage(imageUri, 'pending');
+            console.log('[Submit] image uploaded:', permanentImageUrl);
+
             const newAnimal = await addPendingAnimal({
                 animal_code:         generateAnimalCode(),
                 species,
                 injury_severity:     severity,
                 injury_signals:      signals.length > 0 ? signals : null,
                 ai_confidence:       confidence,
-                image_url:           imageUri,
+                image_url:           permanentImageUrl,
                 address:             address || null,
                 latitude,
                 longitude,
@@ -241,8 +246,8 @@ export default function MakeReportScreen() {
             // This runs AFTER the animal is saved so it never blocks the submit flow
             if (selected && imageUri && newAnimal?.id) {
                 yoloBackendService.embedFromBbox(imageUri, selected.bbox)
-                    .then(result => saveEmbedding({ animal_id: newAnimal.id, embedding: result.embedding }))
-                    .then(() => console.log('[PawSecure] Embedding saved for', newAnimal.id))
+                    .then(result => saveEmbedding({ animal_id: newAnimal.id, animal_code: newAnimal.animal_code, embedding: result.embedding }))
+                    .then(() => console.log('[PawSecure] Embedding saved for', newAnimal.animal_code))
                     .catch(e => console.error('[PawSecure] Embedding save failed:', e.message));
             }
 

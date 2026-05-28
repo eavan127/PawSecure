@@ -80,13 +80,15 @@ export type RescuedAnimalInsert = Omit<RescuedAnimal, 'id' | 'created_at'>;
 // animal_embeddings 
 
 export interface AnimalEmbedding {
-    id:         string;
-    animal_id:  string;   // FK → pending_animals.id
-    embedding:  number[]; // 512 floats from CLIP ViT-B-32
-    created_at: string;
+    id:          string;
+    animal_id:   string | null; // FK → pending_animals.id (SET NULL when animal is rescued)
+    animal_code: string;        // e.g. "PS-2026-JWI7RU" — persists after rescue
+    embedding:   number[];      // 512 floats from ResNet18
+    created_at:  string;
 }
 
 export type AnimalEmbeddingInsert = {
-    animal_id:  string;
-    embedding:  number[];
+    animal_id:   string;
+    animal_code: string;   // always store so embedding survives rescue
+    embedding:   number[];
 };

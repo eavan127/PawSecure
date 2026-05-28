@@ -7,7 +7,45 @@ import type {
     AnimalEmbeddingInsert,
 } from '../lib/supabaseTypes';
 
-//  Pending Animals 
+// Image Upload
+
+/**
+ * Uploads a blob:// or object URL to Supabase Storage.
+ * Returns a permanent public URL that survives page refreshes.
+ *
+ * folder = 'pending'  for CCTV sighting photos
+ * folder = 'rescued'  for post-rescue confirmation photos
+ */
+export async function uploadAnimalImage(
+    blobUri: string,
+    folder: 'pending' | 'rescued' = 'pending'
+): Promise<string> {
+    // Convert blob URL → raw bytes
+    const response = await fetch(blobUri);
+    const blob = await response.blob();
+
+    // Unique filename: pending/1748430000000-ab3f2c.jpg
+    const ext      = blob.type.includes('png') ? 'png' : 'jpg';
+    const filename = `${folder}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+
+    const { data, error } = await supabase.storage
+        .from('animal-images')
+        .upload(filename, blob, {
+            contentType: blob.type || 'image/jpeg',
+            upsert: false,
+        });
+
+    if (error) throw new Error('Image upload failed: ' + error.message);
+
+    // Get the permanent public URL
+    const { data: { publicUrl } } = supabase.storage
+        .from('animal-images')
+        .getPublicUrl(data.path);
+
+    return publicUrl;
+}
+
+//  Pending Animals
 
 export async function getPendingAnimals(): Promise<PendingAnimal[]> {
     const { data, error } = await supabase
@@ -140,6 +178,40 @@ export async function getRescuedAnimals(orgId: string): Promise<RescuedAnimal[]>
 
     if (error) throw new Error(error.message);
     return data ?? [];
+}
+
+/**
+ * Profile page stats for a specific org.
+ * - reports:  animals this org submitted to the queue
+ * - rescued:  animals this org confirmed rescued
+ * - points:   reports × 2 + rescued × 8  (gamification)
+ */
+export async function getOrgProfileStats(orgId: string): Promise<{
+    reports: number;
+    rescued: number;
+    points:  number;
+}> {
+    // Count reports submitted by this org
+    const { count: reportCount, error: repErr } = await supabase
+        .from('pending_animals')
+        .select('*', { count: 'exact', head: true })
+        .eq('reported_by_org_id', orgId);
+
+    if (repErr) throw new Error(repErr.message);
+
+    // Count animals rescued by this org
+    const { count: rescuedCount, error: resErr } = await supabase
+        .from('rescued_animals')
+        .select('*', { count: 'exact', head: true })
+        .eq('rescued_by_org_id', orgId);
+
+    if (resErr) throw new Error(resErr.message);
+
+    const reports = reportCount ?? 0;
+    const rescued = rescuedCount ?? 0;
+    const points  = reports * 2 + rescued * 8;
+
+    return { reports, rescued, points };
 }
 
 export async function getRescueStats(orgId: string) {

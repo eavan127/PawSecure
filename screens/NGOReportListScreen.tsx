@@ -5,7 +5,8 @@
  * Tap a card to open NGOReportDetailScreen where the org can claim + confirm rescue.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
     View,
     Text,
@@ -139,9 +140,14 @@ export const NGOReportListScreen: React.FC = () => {
         }
     }, []);
 
-    useEffect(() => {
-        load().finally(() => setLoading(false));
-    }, [load]);
+    // Re-fetch every time this screen comes into focus
+    // (e.g. when user navigates back from detail after rescuing an animal)
+    useFocusEffect(
+        useCallback(() => {
+            setLoading(true);
+            load().finally(() => setLoading(false));
+        }, [load])
+    );
 
     const onRefresh = async () => {
         setRefreshing(true);
