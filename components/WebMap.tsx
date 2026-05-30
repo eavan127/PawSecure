@@ -11,6 +11,7 @@
 
 import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
 import type { PendingAnimal } from '../lib/supabaseTypes';
 
 // Malaysia centre
@@ -30,6 +31,27 @@ const SEVERITY_COLORS: Record<string, string> = {
     severe:   '#ef4444',
     critical: '#7c3aed',
 };
+
+// Create a colored circle marker icon based on severity
+function createSeverityIcon(severity: string) {
+    const color = SEVERITY_COLORS[severity] ?? '#6b7280';
+    return L.divIcon({
+        className: '',
+        html: `
+            <div style="
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: ${color};
+                border: 3px solid white;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            "></div>
+        `,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+        popupAnchor: [0, -12],
+    });
+}
 
 interface WebMapProps {
     animals?: PendingAnimal[];
@@ -69,9 +91,25 @@ export function WebMap({ animals = [], onMarkerPress, height = '100%' }: WebMapP
                     <Marker
                         key={animal.id}
                         position={[animal.latitude, animal.longitude]}
+                        icon={createSeverityIcon(animal.injury_severity)}
                     >
                         <Popup>
-                            <div style={{ minWidth: 160 }}>
+                            <div style={{ minWidth: 180 }}>
+                                {/* Animal image */}
+                                {animal.image_url && (
+                                    <img
+                                        src={animal.image_url}
+                                        alt={animal.species}
+                                        style={{
+                                            width: '100%',
+                                            height: 120,
+                                            objectFit: 'cover',
+                                            borderRadius: 6,
+                                            marginBottom: 8,
+                                            display: 'block',
+                                        }}
+                                    />
+                                )}
                                 <div style={{
                                     display: 'flex',
                                     justifyContent: 'space-between',
@@ -79,7 +117,7 @@ export function WebMap({ animals = [], onMarkerPress, height = '100%' }: WebMapP
                                     marginBottom: 6,
                                 }}>
                                     <strong style={{ fontSize: 14, textTransform: 'capitalize' }}>
-                                        {animal.species}
+                                        {animal.species === 'dog' ? '🐕' : '🐱'} {animal.species}
                                     </strong>
                                     <span style={{
                                         fontSize: 11,

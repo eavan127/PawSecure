@@ -105,7 +105,7 @@ export default function LandingScreen() {
 
     const handlePressIn = (scale: Animated.Value) => {
         if (Platform.OS !== 'web') {
-            
+
         }
         Animated.spring(scale, {
             toValue: 0.98,

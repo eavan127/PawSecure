@@ -67,3 +67,6 @@ ios/build/
 *.tflite
 *.pt
 *.pth
+
+# dataset 
+backend/dataset/
