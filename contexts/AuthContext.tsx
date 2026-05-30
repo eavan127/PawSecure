@@ -103,20 +103,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const login = async (email: string, password: string) => {
         setIsLoading(true);
         try {
+            console.log('[login] step 1 — signInWithPassword start');
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
                 password: password.trim(),
             });
+            console.log('[login] step 1 done — error:', error?.message ?? 'none', '| userId:', data.user?.id ?? 'null');
             if (error) throw error;
             if (!data.user) throw new Error('Login failed — no user returned.');
 
+            console.log('[login] step 2 — fetchProfile start');
             const found = await fetchProfile(data.user.id);
+            console.log('[login] step 2 done — found:', found);
             if (!found) {
-                // Auth account exists but no org profile — sign out and tell user
                 await supabase.auth.signOut();
                 throw new Error('No organisation profile found for this email. Please sign up first.');
             }
+        } catch (e: any) {
+            console.error('[login] error:', e.message);
+            throw e;
         } finally {
+            console.log('[login] finally — setIsLoading false');
             setIsLoading(false);
         }
     };
@@ -181,8 +188,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = async () => {
-        await supabase.auth.signOut();
-        setUser(null);
+        setUser(null); // clear user immediately → tab layout redirects to landing right away
+        supabase.auth.signOut().catch(() => {}); // fire and forget — don't wait for network
     };
 
     return (

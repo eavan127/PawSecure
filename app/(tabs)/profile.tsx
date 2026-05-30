@@ -149,13 +149,11 @@ export default function ProfileScreen() {
         });
     };
 
-    const handleLogout = async () => {
+    const handleLogout = () => {
         setIsLoggingOut(true);
-        await logout();
-        // Don't navigate here — the tab layout's useEffect watches user state
-        // and will redirect to /(auth)/landing automatically when user becomes null.
-        // Navigating here too causes a double-redirect race condition.
-        closeLogoutModal();
+        setShowLogoutModal(false); // close modal immediately, no animation
+        logout();                  // fire and forget — AuthContext clears user instantly
+        // Tab layout's useEffect sees user=null → navigates to landing automatically
     };
 
     const handleLogoutPress = () => {

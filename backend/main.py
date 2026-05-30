@@ -42,11 +42,11 @@ app.add_middleware(
 
 print("Loading YOLO model...")
 try:
-    yolo = YOLO("yolo11n.pt")   # yolo newest model
-    print("YOLO yolo11n loaded.")
+    yolo = YOLO("best.pt")      # PawSecure fine-tuned stray animal model
+    print("PawSecure custom model loaded.")
 except Exception:
-    yolo = YOLO("yolov8n.pt")   # fallback to old version
-    print("YOLO yolov8n loaded (fallback).")
+    yolo = YOLO("yolo11n.pt")   # fallback to general model
+    print("YOLO yolo11n loaded (fallback).")
 
 print("Loading ResNet18 embedding model...")
 embed_model = models.resnet18(weights='IMAGENET1K_V1')
@@ -74,10 +74,10 @@ embed_preprocess = transforms.Compose([
 ])
 print("ResNet18 loaded.")
 
-# COCO dataset class IDs  (yolo was trained based on COCO dataset)
-# has 80 object categories, we take 15 and 16 only 
-CAT_CLASS_ID = 15
-DOG_CLASS_ID = 16
+# PawSecure fine-tuned model class IDs
+# Dataset: ['cat', 'dog'] → cat=0, dog=1
+CAT_CLASS_ID = 0
+DOG_CLASS_ID = 1
 
 #  Pydantic Schemas 
 # These are like TypeScript interfaces but for Python.
