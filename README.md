@@ -1,110 +1,182 @@
+# PawSecure 🐾
 
-# 🐾 PawGuard AI
-
-> **Saving Lives, One Paw at a Time.**  
-> An AI-powered platform for stray animal rescue, disaster management, and adoption.
-
-## 💡 Inspiration
-During natural disasters like floods or earthquakes, pets and stray animals are often the forgotten victims. We noticed a lack of coordinated systems to track stranded animals or manage rescue operations efficiently. **PawGuard AI** was born out of the desire to bridge the gap between technology and animal welfare, giving NGOs and rescuers a powerful tool to save lives.
-
-## 🚀 What it does
-PawGuard AI is a comprehensive mobile application designed for two main user groups: **Public Users** and **NGOs/Rescuers**.
-
-*   **🔍 AI-Powered Detection**: proof-of-concept integration using **YOLOv11** to automatically detect and classify animals (dogs/cats) from camera feeds or uploaded images.
-*   **🚨 Disaster Mode**: A specialized specialized real-time emergency system that activates during crises (e.g., floods, earthquakes). It geofences disaster zones and prioritizes rescue requests within those areas.
-*   **📍 Location-Based Reporting**: Users can pin locations of stray or injured animals, creating a live map for rescuers.
-*   **🏡 Adoption Platform**: A "Tinder-like" interface for browsing adoptable pets, making it easier for animals to find forever homes.
-*   **📊 NGO Dashboard**: A dedicated command center for organizations to manage reports, track rescue status, and coordinate volunteer efforts.
-
-## ⚙️ How we built it
-We built PawGuard AI using a modern, scalable tech stack:
-
-*   **Frontend**: React Native with **Expo (SDK 54)** for a cross-platform mobile experience.
-*   **Backend**: 
-    *   **Supabase** for real-time database, authentication, and storage.
-    *   **Python (Flask)** running a custom **YOLOv11** model for object detection.
-*   **AI/ML**: **YOLOv11n** (Nano) model, optimized for speed and accuracy in detecting dogs and cats.
-*   **Maps & Location**: Integration with **Expo Location** and Maps to provide precise geolocation for reports and disaster zones.
-*   **Design**: Custom design system with **Expo Linear Gradient** and **Reanimated** for smooth, engaging UI interactions.
-
-## ✨ Key Features & Highlights
-
-### 1. Intelligence & Automation
-Instead of manual data entry, our **YOLOv11 Backend** analyzes possibilities of animals in images instantly.
-> *"Is that a dog or a cat?"* -> PawGuard knows instantly.
-
-### 2. Real-Time Disaster Response
-When a disaster strikes (e.g., "Sabah Earthquake Zone"), the app switches context.
-*   **Dynamic Geofencing**: Users inside the zone get specific alerts.
-*   **Priority Queue**: Operations in disaster zones are flagged as "Critical".
-*   **Live Updates**: Rescuers see reports pop up in real-time via Supabase subscriptions.
-
-### 3. Community Driven
-*   **Gamification**: Users earn points/badges for reporting and helping (concept).
-*   **Adoption Spotlight**: Highlighting urgent adoption cases to the community.
-
-## 🛠️ Installation & Setup (For Judges)
-
-### Prerequisites
-*   Node.js & npm/yarn
-*   Python 3.10+
-*   Expo Go app on your phone (or Android/iOS Simulator)
-
-### Step 1: Clone the Repo
-```bash
-git clone https://github.com/Jessy123123/PawGuard_AI.git
-cd PawGuard_AI
-```
-
-### Step 2: Backend Setup (YOLO)
-The AI detection runs on a local Python server.
-```bash
-cd backend
-pip install -r requirements.txt
-python app.py
-```
-*You should see: `✅ YOLOv11 model loaded! Running on http://0.0.0.0:5000`*
-
-### Step 3: Frontend Setup
-1.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
-2.  **Configure Environment**:
-    Create a `.env` file in the root directory:
-    ```env
-    EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
-    EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_key
-    EXPO_PUBLIC_YOLO_BACKEND_URL=http://YOUR_LOCAL_IP:5000
-    ```
-    *(Replace `YOUR_LOCAL_IP` with your machine's local IP address, e.g., `192.168.1.5`)*
-
-3.  **Run the App**:
-    ```bash
-    npx expo start
-    ```
-4.  Scan the QR code with **Expo Go**.
-
-## 📱 Usage Guide
-1.  **Login**: Use the demo credentials or sign up.
-    *   *Demo NGO Account*: `ngo@pawguard.com` / `password123` (If applicable)
-2.  **Report**: Tap the **Camera** icon. Snap a photo of a pet. Watch the AI detect it!
-3.  **Disaster Mode**: Navigate to the "Disaster" tab to see active zones (mocked for demo purposes).
-
-## 🧠 Challenges we ran into
-*   **Real-time Synchronization**: Keeping the rescue status updated across all devices instantly was tricky. We solved this using **Supabase Realtime** subscriptions.
-*   **AI on Mobile**: Running heavy models on phones is hard. We offloaded the heavy lifting to a lightweight **Flask API** serving YOLOv11, ensuring the app remains buttery smooth.
-
-## 🏆 Accomplishments that we're proud of
-*   Successfully integrating a custom **Python AI Backend** with a **React Native** frontend.
-*   Creating a **Disaster Management System** that can genuinely help in emergencies.
-*   The smooth, animated UI that makes the app feel premium and trustworthy.
-
-## 🔮 What's next for PawGuard AI
-*   **Offline Mode**: Caching reports for areas with poor connectivity.
-*   **Vet Integration**: Connect injured animals directly with nearby clinics.
-*   **Donation Gateway**: Allow users to fund specific rescue missions directly.
+> Extended from **PawGuardAI** (KitaHack 2026) — rebuilt with a production-ready stack for NGO stray animal rescue operations in Malaysia.
 
 ---
 
-**Built with ❤️ for the KitaHack 2026**
+## What is PawSecure?
+
+PawSecure is an AI-powered stray animal rescue platform designed for NGOs, SPCA branches, and volunteer rescue organisations. It enables organisations to report injured stray animals detected via CCTV, manage a live rescue queue, and maintain a permanent rescue archive — all powered by a custom-trained YOLO model.
+
+### From PawGuardAI → PawSecure
+
+| | PawGuardAI (KitaHack 2026) | PawSecure |
+|--|--|--|
+| Frontend | Expo Go (mobile) | Expo Router (web) |
+| Backend | Flask (port 5000) | FastAPI (port 8000) |
+| Database | Firebase | Supabase (PostgreSQL) |
+| AI Model | YOLO + CLIP | YOLO11 fine-tuned + ResNet18 |
+| Images | Temporary blob URLs | Supabase Storage (permanent) |
+| Auth | Firebase Auth | Supabase Auth + RLS |
+| Map | Basic | Leaflet / OpenStreetMap |
+
+---
+
+## Tech Stack
+
+**Frontend**
+- React Native Web (Expo Router)
+- TypeScript
+- Leaflet / OpenStreetMap
+
+**Backend**
+- Python FastAPI
+- YOLO11 (fine-tuned on 4,168 stray animal images)
+- ResNet18 (512-dim animal embeddings)
+- OpenCV (injury severity detection)
+
+**Database & Storage**
+- Supabase PostgreSQL
+- Supabase Auth (JWT + RLS)
+- Supabase Storage (cloud image hosting)
+- pgvector (animal embedding similarity search)
+
+---
+
+## Features
+
+- 📷 **CCTV Upload** — upload images or video frames from CCTV footage
+- 🤖 **AI Detection** — custom YOLO11 model detects dogs and cats with bounding boxes
+- 🩸 **Injury Analysis** — OpenCV HSV colour analysis classifies injury as none / mild / moderate / severe
+- 🗺️ **Live Map** — Leaflet map with severity-coloured markers for all pending animals
+- 📋 **Rescue Queue** — NGOs browse, filter, and claim animals for rescue
+- ✅ **Rescue Confirmation** — upload rescue photo to confirm and archive the rescue
+- 🏠 **Rescue Archive** — permanent record of every rescued animal with stats
+- 🔍 **Animal Re-ID** — ResNet18 embeddings stored in pgvector for same-animal matching
+- 📊 **Org Dashboard** — live stats per organisation (reports, rescues, points)
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- Python 3.10+
+- Supabase project (free tier works)
+
+### 1. Clone the repo
+```bash
+git clone https://github.com/YOUR_USERNAME/PawSecure.git
+cd PawSecure
+```
+
+### 2. Install frontend dependencies
+```bash
+npm install
+```
+
+### 3. Set up environment variables
+Create a `.env` file in the project root:
+```
+EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+EXPO_PUBLIC_YOLO_BACKEND_URL=http://localhost:8000
+```
+
+### 4. Set up the Python backend
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # Mac/Linux
+
+pip install -r requirements.txt
+```
+
+### 5. Start the backend
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Backend docs available at: `http://localhost:8000/docs`
+
+### 6. Start the frontend
+```bash
+# In a new terminal, from project root
+npx expo start --web --clear
+```
+
+Open Chrome → `http://localhost:8081`
+
+---
+
+## AI Model
+
+The YOLO model was fine-tuned on the [Stray Animal Detection 2](https://universe.roboflow.com/rep-rxi6f/stray-animal-detection-2) dataset from Roboflow:
+
+- **4,168 training images** (after augmentation)
+- **Classes:** cat (0), dog (1)
+- **Training:** 50 epochs, 640×640, Google Colab T4 GPU
+- **Base model:** YOLO11n (yolo11n.pt)
+
+Animal re-identification uses **ResNet18** (torchvision, ImageNet weights) with the classification head removed — producing 512-dim L2-normalised embeddings stored in Supabase pgvector.
+
+---
+
+## Database Setup
+
+Run `supabase_schema.sql` in your Supabase SQL Editor to create all tables, RLS policies, and indexes.
+
+Also create a **Supabase Storage bucket**:
+- Name: `animal-images`
+- Public: ✅ ON
+
+```sql
+UPDATE storage.buckets SET public = true WHERE id = 'animal-images';
+```
+
+---
+
+## Project Structure
+
+```
+PawSecure/
+├── app/                    # Expo Router pages
+│   ├── (auth)/             # Login, signup, landing
+│   └── (tabs)/             # Map, animals, rescued, report, profile
+├── screens/                # Main screen components
+├── services/               # Supabase + YOLO API calls
+├── contexts/               # Auth context
+├── components/             # Reusable components (WebMap, etc.)
+├── lib/                    # Supabase client + TypeScript types
+├── theme/                  # Colors and spacing
+├── backend/                # FastAPI Python server
+│   ├── main.py             # All AI endpoints
+│   ├── best.pt             # Fine-tuned YOLO model
+│   └── dataset/            # Training dataset (not committed)
+└── supabase_schema.sql     # Database schema
+```
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Check if backend is running |
+| `/detect` | POST | YOLO animal detection (bbox + class) |
+| `/embed` | POST | ResNet18 embedding for animal re-ID |
+| `/injury` | POST | Injury severity classification |
+| `/pipeline` | POST | YOLO + injury in one call |
+
+All endpoints accept `{ "image": "<base64>" }` as input.
+
+---
+
+## Acknowledgements
+
+- **PawGuardAI** — original hackathon concept (KitaHack 2026)
+- [Roboflow Stray Animal Detection 2](https://universe.roboflow.com/rep-rxi6f/stray-animal-detection-2) — training dataset
+- [Ultralytics YOLO11](https://github.com/ultralytics/ultralytics) — object detection
+- [Supabase](https://supabase.com) — database, auth, storage
+- [OpenStreetMap](https://www.openstreetmap.org) / [Leaflet](https://leafletjs.com) — map
