@@ -1,6 +1,6 @@
 # PawSecure 🐾
 
-> Extended from **PawGuardAI** (KitaHack 2026) — rebuilt with a production-ready stack for NGO stray animal rescue operations in Malaysia.
+> Extended from **PawGuardAI** (KitaHack 2026) — rebuilt with a production-ready stack for NGO stray animal rescue operations in Malaysia. [View on GitHub](https://github.com/Jessy123123/PawGuard_AI)
 
 ---
 
