@@ -60,6 +60,7 @@ build/
 
 *.log
 *.txt
+!backend/requirements.txt
 
 android/app/build/
 ios/build/
@@ -67,6 +68,9 @@ ios/build/
 *.tflite
 *.pt
 *.pth
+!backend/best.pt
+!backend/yolo11n.pt
+!backend/yolov8n.pt
 
 # dataset 
 backend/dataset/
