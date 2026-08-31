@@ -28,7 +28,13 @@
         "googleMaps": {
           "apiKey": "AIzaSyAInFLT1XZE52LJntn40eyc5fXEfH1zroo"
         }
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -53,6 +59,11 @@
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to upload report images."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b2bfef7c-d768-463f-a5bf-7a533e982a43"
+      }
+    }
   }
 }
